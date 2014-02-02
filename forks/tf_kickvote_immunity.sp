@@ -86,12 +86,26 @@ public Action:callvote(client, const String:cmd[], argc)
 	new AdminId:targetAdmin = GetUserAdmin(target);
 	
 	if (clientAdmin == INVALID_ADMIN_ID && targetAdmin == INVALID_ADMIN_ID)
+	{
+		LogAction(client, target, "\"%L\" called a vote against \"%L\"",
+			client, target);
+		PrintToChatAll("[SM] %N called a vote against %N", client, target);
+
 		return Plugin_Continue;
+	}
 	
 	if (CanAdminTarget(clientAdmin, targetAdmin))
+	{
+		LogAction(client, target, "\"%L\" called a vote against \"%L\"",
+			client, target);
+		PrintToChatAll("[SM] %N called a vote against %N", client, target);
+
 		return Plugin_Continue;
-	
-	PrintToChat(client, "You may not start a kick vote against \"%N\"", target);
+	}
+
+	PrintToChat(client, "[SM] You may not start a kick vote against %N", target);
+	LogAction(client, -1, "\"%L\" failed to call a vote against \"%L\", reason \"%s\"",
+		client, target);
 	
 	return Plugin_Handled;
 }
