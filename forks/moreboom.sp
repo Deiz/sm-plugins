@@ -43,9 +43,11 @@ public Plugin:myinfo =
 new offsBroken = -1
 new offsDetonated = -1;
 new Handle:cvTime;
+new Handle:cvEnabled;
 new Handle:zeTimers[MAXPLAYERS+1];
 
 new bool:g_instant;
+new bool:g_enabled;
 
 public OnPluginStart()
 {
@@ -61,12 +63,27 @@ public OnPluginStart()
 	offsDetonated = FindSendPropInfo(STICKBOMB_CLASS, "m_iDetonated");
 	
 	cvTime = CreateConVar("moreboom_refreshtime", "16", "Time, in seconds, until stickbomb is reset (for those with permission) Default: 16", 0, true, 0.0);
+	cvEnabled = CreateConVar("moreboom_enabled", "1",
+		"Whether cabers are automatically replaced after exploding");
+
+	HookConVarChange(cvEnabled, OnEnabledChanged);
 
 	AutoExecConfig(true, "moreboom");
 }
 
+public OnEnabledChanged(Handle:convar, const String:oldValue[], const String:newValue[])
+{
+	g_enabled = GetConVarBool(convar);
+}
+
 public Action:Command_BoomToggle(client, args)
 {
+	if (!g_enabled)
+	{
+		ReplyToCommand(client, "[SM] More Boom is disabled");
+		return Plugin_Handled;
+	}
+
 	g_instant = !g_instant;
 	decl String:delay[32] = "Instant";
 
@@ -79,6 +96,11 @@ public Action:Command_BoomToggle(client, args)
 
 public Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
 {
+	if (!g_enabled)
+	{
+		return;
+	}
+
 	new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
 	new victim = GetClientOfUserId(GetEventInt(event, "userid"));
 	
@@ -135,6 +157,11 @@ public Action:Timer_RefreshStickBomb(Handle:timer, any:userid)
 
 RefreshStickBomb(client, bool:doWeaponCheck=true)
 {
+	if (!g_enabled)
+	{
+		return;
+	}
+
 	new stickbomb = GetPlayerWeaponSlot(client, TFWeaponSlot_Melee);
 	if (stickbomb <= MaxClients || !IsValidEdict(stickbomb))
 	{
