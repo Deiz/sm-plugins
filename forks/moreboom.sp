@@ -45,8 +45,12 @@ new offsDetonated = -1;
 new Handle:cvTime;
 new Handle:zeTimers[MAXPLAYERS+1];
 
+new bool:g_instant;
+
 public OnPluginStart()
 {
+	RegAdminCmd("sm_boomtoggle", Command_BoomToggle, ADMFLAG_SLAY);
+
 	HookEvent("player_hurt", Event_PlayerHurt);
 	
 	HookEvent("player_death", Event_DoKillTimer);
@@ -57,6 +61,20 @@ public OnPluginStart()
 	offsDetonated = FindSendPropInfo(STICKBOMB_CLASS, "m_iDetonated");
 	
 	cvTime = CreateConVar("moreboom_refreshtime", "16", "Time, in seconds, until stickbomb is reset (for those with permission) Default: 16", 0, true, 0.0);
+
+	AutoExecConfig(true, "moreboom");
+}
+
+public Action:Command_BoomToggle(client, args)
+{
+	g_instant = !g_instant;
+	decl String:delay[32] = "Instant";
+
+	if (!g_instant)
+		GetConVarString(cvTime, delay, sizeof(delay));
+
+	ReplyToCommand(client, "[SM] Caber replacement delay set to: %s", delay);
+	return Plugin_Handled;
 }
 
 public Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
@@ -69,14 +87,16 @@ public Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
 	{
 		return;
 	}
-	
-	if (CheckCommandAccess(victim, "moreboom_instant", ADMFLAG_NONE, true))
+
+	new Float:delay = GetConVarFloat(cvTime);
+	if (delay == 0 || g_instant)
 	{
 		RefreshStickBomb(victim, false);
 	}
-	else if (CheckCommandAccess(victim, "moreboom_timed", ADMFLAG_NONE, true))
+	else
 	{
-		zeTimers[victim] = CreateTimer(GetConVarFloat(cvTime), Timer_RefreshStickBomb, GetClientUserId(victim));
+		zeTimers[victim] = CreateTimer(GetConVarFloat(cvTime),
+			Timer_RefreshStickBomb, GetClientUserId(victim));
 	}
 }
 
