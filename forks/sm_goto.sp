@@ -57,6 +57,8 @@ public Action:Command_Goto(Client,args)
 	TeleportOrigin[1] = PlayerOrigin[1];
 	TeleportOrigin[2] = (PlayerOrigin[2] + 73);
 
+	LogAction(Client, target, "\"%L\" teleported to \"%L\"", Client, target);
+
 	//Teleport
 	TeleportEntity(Client, TeleportOrigin, NULL_VECTOR, NULL_VECTOR);
 
@@ -113,7 +115,11 @@ public Action:Command_Bring(client,args)
 	TeleportOrigin[2] = (PlayerOrigin[2] + 4);
 
 	for (new i = 0; i < target_count; i++)
+	{
+		LogAction(client, target_list[i], "\"%L\" brought \"%L\"",
+			client, target_list[i]);
 		TeleportEntity(target_list[i], TeleportOrigin, NULL_VECTOR, NULL_VECTOR);
+	}
 
 	return Plugin_Handled;
 }
