@@ -1,5 +1,5 @@
 #include <sourcemod>
-#include <sdktools> 
+#include <sdktools>
 #include "dbi.inc"
 
 
@@ -13,7 +13,7 @@ public Plugin:myinfo =
 	version = "1.2.0.0",
 	url = ""
 };
- 
+
 //Plugin-Start
 public OnPluginStart()
 {
@@ -21,7 +21,7 @@ public OnPluginStart()
 	RegAdminCmd("sm_bring", Command_Bring, ADMFLAG_SLAY,"Teleport a player to you");
 
 	CreateConVar("goto_version", "1.2", "Dr. HyperKiLLeRs Player Teleport",FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_UNLOGGED|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
-	
+
 }
 
 public Action:Command_Goto(Client,args)
@@ -37,18 +37,18 @@ public Action:Command_Goto(Client,args)
 		//Return:
 		return Plugin_Handled;
 	}
-	
+
 	//Declare:
 	decl MaxPlayers, Player;
 	decl String:PlayerName[32];
 	new Float:TeleportOrigin[3];
 	new Float:PlayerOrigin[3];
 	decl String:Name[32];
-	
+
 	//Initialize:
 	Player = -1;
 	GetCmdArg(1, PlayerName, sizeof(PlayerName));
-	
+
 	//Find:
 	MaxPlayers = GetMaxClients();
 	for(new X = 1; X <= MaxPlayers; X++)
@@ -63,7 +63,7 @@ public Action:Command_Goto(Client,args)
 		//Save:
 		if(StrContains(Name, PlayerName, false) != -1) Player = X;
 	}
-	
+
 	//Invalid Name:
 	if(Player == -1)
 	{
@@ -74,19 +74,19 @@ public Action:Command_Goto(Client,args)
 		//Return:
 		return Plugin_Handled;
 	}
-	
+
 	//Initialize
 	GetClientName(Player, Name, sizeof(Name));
 	GetClientAbsOrigin(Player, PlayerOrigin);
-	
+
 	//Math
 	TeleportOrigin[0] = PlayerOrigin[0];
 	TeleportOrigin[1] = PlayerOrigin[1];
 	TeleportOrigin[2] = (PlayerOrigin[2] + 73);
-	
+
 	//Teleport
 	TeleportEntity(Client, TeleportOrigin, NULL_VECTOR, NULL_VECTOR);
-	
+
 	return Plugin_Handled;
 }
 
@@ -103,18 +103,18 @@ public Action:Command_Bring(Client,args)
 		//Return:
 		return Plugin_Handled;
 	}
-	
+
 	//Declare:
 	decl MaxPlayers, Player;
 	decl String:PlayerName[32];
 	new Float:TeleportOrigin[3];
 	new Float:PlayerOrigin[3];
 	decl String:Name[32];
-	
+
 	//Initialize:
 	Player = -1;
 	GetCmdArg(1, PlayerName, sizeof(PlayerName));
-	
+
 	//Find:
 	MaxPlayers = GetMaxClients();
 	for(new X = 1; X <= MaxPlayers; X++)
@@ -129,7 +129,7 @@ public Action:Command_Bring(Client,args)
 		//Save:
 		if(StrContains(Name, PlayerName, false) != -1) Player = X;
 	}
-	
+
 	//Invalid Name:
 	if(Player == -1)
 	{
@@ -140,19 +140,19 @@ public Action:Command_Bring(Client,args)
 		//Return:
 		return Plugin_Handled;
 	}
-	
+
 	//Initialize
 	GetClientName(Player, Name, sizeof(Name));
 	GetCollisionPoint(Client, PlayerOrigin);
-	
+
 	//Math
 	TeleportOrigin[0] = PlayerOrigin[0];
 	TeleportOrigin[1] = PlayerOrigin[1];
 	TeleportOrigin[2] = (PlayerOrigin[2] + 4);
-	
+
 	//Teleport
 	TeleportEntity(Player, TeleportOrigin, NULL_VECTOR, NULL_VECTOR);
-	
+
 	return Plugin_Handled;
 }
 
@@ -161,25 +161,25 @@ public Action:Command_Bring(Client,args)
 stock GetCollisionPoint(client, Float:pos[3])
 {
 	decl Float:vOrigin[3], Float:vAngles[3];
-	
+
 	GetClientEyePosition(client, vOrigin);
 	GetClientEyeAngles(client, vAngles);
-	
+
 	new Handle:trace = TR_TraceRayFilterEx(vOrigin, vAngles, MASK_SOLID, RayType_Infinite, TraceEntityFilterPlayer);
-	
+
 	if(TR_DidHit(trace))
 	{
 		TR_GetEndPosition(pos, trace);
 		CloseHandle(trace);
-		
+
 		return;
 	}
-	
+
 	CloseHandle(trace);
 }
 
 public bool:TraceEntityFilterPlayer(entity, contentsMask)
 {
 	return entity > MaxClients;
-}  
+}
 
