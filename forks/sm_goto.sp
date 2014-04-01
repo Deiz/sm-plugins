@@ -2,9 +2,6 @@
 #include <sdktools>
 #include "dbi.inc"
 
-
-
-
 public Plugin:myinfo =
 {
 	name = "Player-Teleport by Dr. HyperKiLLeR",
@@ -17,6 +14,7 @@ public Plugin:myinfo =
 //Plugin-Start
 public OnPluginStart()
 {
+	LoadTranslations("common.phrases");
 	RegAdminCmd("sm_goto", Command_Goto, ADMFLAG_SLAY,"Go to a player");
 	RegAdminCmd("sm_bring", Command_Bring, ADMFLAG_SLAY,"Teleport a player to you");
 
@@ -39,45 +37,20 @@ public Action:Command_Goto(Client,args)
 	}
 
 	//Declare:
-	decl MaxPlayers, Player;
-	decl String:PlayerName[32];
+	decl String:arg[32];
 	new Float:TeleportOrigin[3];
 	new Float:PlayerOrigin[3];
 	decl String:Name[32];
 
-	//Initialize:
-	Player = -1;
-	GetCmdArg(1, PlayerName, sizeof(PlayerName));
-
-	//Find:
-	MaxPlayers = GetMaxClients();
-	for(new X = 1; X <= MaxPlayers; X++)
+	new target = FindTarget(Client, arg, true, false);
+	if (target == -1)
 	{
-
-		//Connected:
-		if(!IsClientConnected(X)) continue;
-
-		//Initialize:
-		GetClientName(X, Name, sizeof(Name));
-
-		//Save:
-		if(StrContains(Name, PlayerName, false) != -1) Player = X;
-	}
-
-	//Invalid Name:
-	if(Player == -1)
-	{
-
-		//Print:
-		PrintToConsole(Client, "Could not find client \x04%s", PlayerName);
-
-		//Return:
 		return Plugin_Handled;
 	}
 
 	//Initialize
-	GetClientName(Player, Name, sizeof(Name));
-	GetClientAbsOrigin(Player, PlayerOrigin);
+	GetClientName(target, Name, sizeof(Name));
+	GetClientAbsOrigin(target, PlayerOrigin);
 
 	//Math
 	TeleportOrigin[0] = PlayerOrigin[0];
@@ -90,68 +63,57 @@ public Action:Command_Goto(Client,args)
 	return Plugin_Handled;
 }
 
-public Action:Command_Bring(Client,args)
+public Action:Command_Bring(client,args)
 {
     //Error:
 	if(args < 1)
 	{
 
 		//Print:
-		PrintToConsole(Client, "Usage: sm_bring <name>");
-		PrintToChat(Client, "Usage:\x04 sm_bring <name>");
+		PrintToConsole(client, "Usage: sm_bring <name>");
+		PrintToChat(client, "Usage:\x04 sm_bring <name>");
 
 		//Return:
 		return Plugin_Handled;
 	}
 
 	//Declare:
-	decl MaxPlayers, Player;
 	decl String:PlayerName[32];
-	new Float:TeleportOrigin[3];
-	new Float:PlayerOrigin[3];
-	decl String:Name[32];
 
 	//Initialize:
-	Player = -1;
 	GetCmdArg(1, PlayerName, sizeof(PlayerName));
 
-	//Find:
-	MaxPlayers = GetMaxClients();
-	for(new X = 1; X <= MaxPlayers; X++)
+	decl String:target_name[MAX_TARGET_LENGTH];
+	decl target_list[MAXPLAYERS], target_count, bool:tn_is_ml;
+
+	if ((target_count = ProcessTargetString(
+		PlayerName,
+		client,
+		target_list,
+		MAXPLAYERS,
+		COMMAND_FILTER_ALIVE,
+		target_name,
+		sizeof(target_name),
+		tn_is_ml)) <= 0)
 	{
-
-		//Connected:
-		if(!IsClientConnected(X)) continue;
-
-		//Initialize:
-		GetClientName(X, Name, sizeof(Name));
-
-		//Save:
-		if(StrContains(Name, PlayerName, false) != -1) Player = X;
-	}
-
-	//Invalid Name:
-	if(Player == -1)
-	{
-
-		//Print:
-		PrintToConsole(Client, "Could not find client \x04%s", PlayerName);
-
-		//Return:
+		ReplyToTargetError(client, target_count);
 		return Plugin_Handled;
 	}
 
+	new Float:TeleportOrigin[3];
+	new Float:PlayerOrigin[3];
+
+
 	//Initialize
-	GetClientName(Player, Name, sizeof(Name));
-	GetCollisionPoint(Client, PlayerOrigin);
+	GetCollisionPoint(client, PlayerOrigin);
 
 	//Math
 	TeleportOrigin[0] = PlayerOrigin[0];
 	TeleportOrigin[1] = PlayerOrigin[1];
 	TeleportOrigin[2] = (PlayerOrigin[2] + 4);
 
-	//Teleport
-	TeleportEntity(Player, TeleportOrigin, NULL_VECTOR, NULL_VECTOR);
+	for (new i = 0; i < target_count; i++)
+		TeleportEntity(target_list[i], TeleportOrigin, NULL_VECTOR, NULL_VECTOR);
 
 	return Plugin_Handled;
 }
