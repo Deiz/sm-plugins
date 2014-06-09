@@ -19,6 +19,7 @@
 #include <sdktools>
 #undef REQUIRE_PLUGIN
 #include <adminmenu>
+#include <basecomm>
 
 #define PLUGIN_VERSION "1.0.105P" 
 
@@ -36,8 +37,6 @@ new g_voteClient[2]
 new String:g_voteInfo[3][65]
 
 new g_votetype = 0
-
-new bool:g_Gagged[65]
 
 public Plugin:myinfo =
 {
@@ -58,39 +57,9 @@ public OnPluginStart()
 	RegConsoleCmd("sm_votesilence", Command_Votesilence,  "sm_votesilence <player> ")  
 	RegConsoleCmd("sm_votegag", Command_Votegag,  "sm_votegag <player> ") 
 	
-	RegConsoleCmd("say", Command_Say);
-	RegConsoleCmd("say_team", Command_Say);
-	RegConsoleCmd("voicemenu", Command_VoiceMenu)
-	
 	LoadTranslations("common.phrases")
 }
 
-public Action:Command_Say(client, args)
-{
-	if (client)
-	{
-		if (g_Gagged[client])
-		{
-			return Plugin_Handled;		
-		}
-	}
-	
-	return Plugin_Continue;
-}
-
-public Action:Command_VoiceMenu(client, args)
-{
-	if (client)
-	{
-		if (g_Gagged[client])
-		{
-			return Plugin_Handled	
-		}
-	}
-	return Plugin_Continue
-}
-
-	
 public Action:Command_Votemute(client, args)
 {
 	if (IsVoteInProgress())
@@ -354,20 +323,20 @@ public Handler_VoteCallback(Handle:menu, MenuAction:action, param1, param2)
 			{
 				PrintToChatAll("[SM] %s", "Muted target", "_s", g_voteInfo[VOTE_NAME]);
 				LogAction(-1, g_voteClient[VOTE_CLIENTID], "Vote mute successful, muted \"%L\" ", g_voteClient[VOTE_CLIENTID]);
-				SetClientListeningFlags( g_voteClient[VOTE_CLIENTID], VOICE_MUTED);					
+				BaseComm_SetClientMute(g_voteClient[VOTE_CLIENTID], true)
 			}
 			else if (g_votetype == 1)
 			{
 				PrintToChatAll("[SM] %s", "Silenced target", "_s", g_voteInfo[VOTE_NAME]);	
 				LogAction(-1, g_voteClient[VOTE_CLIENTID], "Vote silence successful, silenced \"%L\" ", g_voteClient[VOTE_CLIENTID]);
-				SetClientListeningFlags( g_voteClient[VOTE_CLIENTID], VOICE_MUTED);
-				g_Gagged[g_voteClient[VOTE_CLIENTID]] = true
+				BaseComm_SetClientMute(g_voteClient[VOTE_CLIENTID], true)
+				BaseComm_SetClientGag(g_voteClient[VOTE_CLIENTID], true)
 			}		
 			else 
 			{
 				PrintToChatAll("[SM] %s", "Gagged target", "_s", g_voteInfo[VOTE_NAME]);	
 				LogAction(-1, g_voteClient[VOTE_CLIENTID], "Vote gag successful, gagged \"%L\" ", g_voteClient[VOTE_CLIENTID]);
-				g_Gagged[g_voteClient[VOTE_CLIENTID]] = true
+				BaseComm_SetClientGag(g_voteClient[VOTE_CLIENTID], true)
 			}	
 		}
 	}
