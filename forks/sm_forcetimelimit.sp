@@ -23,18 +23,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <sourcemod>
 #include <sdktools>
+#include <tf2>
 
 // Plugin Version
 #define PLUGIN_VERSION "1.1.203"
 
 // Handles
 new Handle:g_Enable 	= INVALID_HANDLE;
-new Handle:g_Nextmap 	= INVALID_HANDLE;
 new Handle:g_MapTimer	= INVALID_HANDLE;
-new Handle:g_TimeLimit	= INVALID_HANDLE;
-
-new g_totalmaptime;
-new Float:g_MapStart;
 
 public Plugin:myinfo = 
 {
@@ -50,97 +46,90 @@ public OnPluginStart()
 	CreateConVar("sm_forcetimelimit_version", PLUGIN_VERSION, "Version of Force Timelimit", FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY);
 	
 	g_Enable  = CreateConVar("sm_forcetimelimit_enable", "0", "- enables/disables the plugin", _, true, 0.0, true, 1.0);
-	
-	g_TimeLimit = FindConVar("mp_timelimit");
-	HookConVarChange(g_TimeLimit, TimeLimitChanged);
-	
 }
 
-public OnMapStart()
+public OnMapEnd()
 {
-	g_MapStart = GetGameTime();
+	g_MapTimer = INVALID_HANDLE;
 }
 
 public OnConfigsExecuted()
 {
+	if (GetConVarInt(g_Enable) == 1 && FindConVar("sm_nextmap") == INVALID_HANDLE)
+	{
+		LogError("FATAL: Cannot find sm_nextmap cvar. sm_forcetimelimit.smx not loaded");
+		SetFailState("sm_nextmap not found");
+	}
+	SetupTimer();
+}
+
+public OnMapTimeLeftChanged()
+{
 	if (GetConVarInt(g_Enable) == 1)
 	{
-		g_Nextmap = FindConVar("sm_nextmap");
-		
-		if (g_Nextmap == INVALID_HANDLE)
-		{
-			LogError("FATAL: Cannot find sm_nextmap cvar. sm_forcetimelimit.smx not loaded");
-			SetFailState("sm_nextmap not found");
-		}
-		
-		// Grab mp_timelimit and set timer to warn 1 min before map change
-		g_totalmaptime = GetConVarInt(g_TimeLimit);
-		
-		new maptime = g_totalmaptime * 60;
-		
-		g_MapTimer = CreateTimer(float(maptime - 60), WarnMapChange, 60.0, TIMER_FLAG_NO_MAPCHANGE);
-		PrintToServer("[SM] Default time limit for this map: %i mins", g_totalmaptime);
+		SetupTimer();
 	}
 }
 
-public TimeLimitChanged(Handle:convar, const String:oldValue[], const String:newValue[])
-{	
-	if (GetConVarInt(g_Enable) == 1)
+SetupTimer()
+{
+	if (g_MapTimer != INVALID_HANDLE)
 	{
-		new Float:CurrentTime = GetGameTime();
-		new Float:TimeElapsed = CurrentTime - g_MapStart;
-		
-		new newmaptime = GetConVarInt(g_TimeLimit);
-			
-		if (newmaptime > g_totalmaptime)
-		{
-			if (g_MapTimer != INVALID_HANDLE)
-			{
-				KillTimer(g_MapTimer);
-				g_MapTimer = INVALID_HANDLE;
-			}
-			
-			new Float:time = (newmaptime * 60) - TimeElapsed;
-			g_MapTimer = CreateTimer(time - 60.0, WarnMapChange, 60.0, TIMER_FLAG_NO_MAPCHANGE);
-			PrintToServer("[SM] Time limit changed");
-		}
-		else if (newmaptime < g_totalmaptime)
-		{
-			if (g_MapTimer != INVALID_HANDLE)
-			{
-				KillTimer(g_MapTimer);
-				g_MapTimer = INVALID_HANDLE;
-			}
-			
-			if (TimeElapsed < (newmaptime * 60))
-			{
-				new Float:time = (newmaptime * 60) - TimeElapsed;
-				g_MapTimer = CreateTimer(time - 60.0, WarnMapChange, 60.0, TIMER_FLAG_NO_MAPCHANGE);
-				PrintToServer("[SM] Time limit changed");
-			}
-			else
-			{
-				g_MapTimer = CreateTimer(0.1, WarnMapChange, 0.1, TIMER_FLAG_NO_MAPCHANGE);
-				PrintToServer("[SM] Time limit change less than time elapsed....Map changing immediately");
-			}
-		}
+		KillTimer(g_MapTimer);
+		g_MapTimer = INVALID_HANDLE;
 	}
+
+	new timeleft;
+	GetMapTimeLeft(timeleft);
+
+	// mp_timelimit 0 is unlimited
+	if (timeleft == -1)
+		return;
+
+	new warndelay   = timeleft - 61;
+	new changedelay = 60;
+	if (timeleft <= changedelay)
+	{
+		// Too little time to warn normally. Warn immediately and change soon
+		changedelay = timeleft - 1;
+
+		// The map should've ended but didn't, so attempt a a graceful switch
+		if (timeleft < 1)
+			changedelay = 5;
+
+		PrintWarning(float(changedelay));
+		g_MapTimer = CreateTimer(float(changedelay), MapChanger, _, TIMER_FLAG_NO_MAPCHANGE);
+		return;
+	}
+	else if (timeleft <= 61 + changedelay)
+	{
+		// Time left is shorter than (warning period + change delay),
+		// shorten the warning period and use a standard change delay
+		warndelay = timeleft - changedelay - 1;
+	}
+
+	g_MapTimer = CreateTimer(float(warndelay), WarnMapChange, float(changedelay), TIMER_FLAG_NO_MAPCHANGE);
+}
+
+PrintWarning(Float:timedelay)
+{
+	new String:newmap[65];
+	GetNextMap(newmap, sizeof(newmap));
+
+	PrintToChatAll("[SM] Map will change to %s in %.0f secs", newmap, timedelay);
+	PrintToServer("[SM] Map will change to %s in %.0f secs", newmap, timedelay);
 }
 
 public Action:WarnMapChange(Handle:timer, any:timedelay)
 {
-	CreateTimer(timedelay, MapChanger, _, TIMER_FLAG_NO_MAPCHANGE);
-	new String:newmap[65];
-	GetNextMap(newmap, sizeof(newmap));
-	if (timedelay >= 60.0)
-	{
-		PrintToChatAll("[SM] Map will change to %s in 60 secs", newmap);
-		PrintToServer("[SM] Map will change to %s in 60 secs", newmap);
-	}
+	PrintWarning(timedelay);
+	g_MapTimer = CreateTimer(timedelay, MapChanger, _, TIMER_FLAG_NO_MAPCHANGE);
 }
 
 public Action:MapChanger(Handle:timer)
 {
+	g_MapTimer = INVALID_HANDLE;
+
 	//Routine by Tsunami to end the map
 	new iGameEnd  = FindEntityByClassname(-1, "game_end");
 	if (iGameEnd == -1 && (iGameEnd = CreateEntityByName("game_end")) == -1) 
@@ -151,10 +140,4 @@ public Action:MapChanger(Handle:timer)
 	{     
 		AcceptEntityInput(iGameEnd, "EndGame");
 	}
-	
-	//PrintToChatAll("[SM] Map changing...")
-	//PrintToServer("[SM] Map changing...")
-	//new String:newmap[65]
-	//GetNextMap(newmap, sizeof(newmap))
-	//ForceChangeLevel(newmap, "Enforced Map TimeLimit")
 }
