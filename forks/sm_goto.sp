@@ -42,7 +42,7 @@ public Action:Command_Goto(Client,args)
 	new Float:PlayerOrigin[3];
 	decl String:Name[32];
 
-	new target = FindTarget(Client, arg, true, false);
+	new target = FindTarget(Client, arg, false, false);
 	if (target == -1)
 	{
 		return Plugin_Handled;
