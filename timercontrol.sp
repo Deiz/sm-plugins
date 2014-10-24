@@ -9,7 +9,7 @@ public Plugin:myinfo =
    name = "Timer Control",
    author = "Forth",
    description = "Disables setup and round timers",
-   version = "0.1",
+   version = "0.2",
 };
 
 new Handle:g_CvarSetupOverride = INVALID_HANDLE;
@@ -78,6 +78,11 @@ public Event_SetupStart(const String:output[], caller, activator, Float:delay)
 
    if (!g_WaitingForPlayers) {
       new time = GetConVarInt(g_CvarSetupOverride);
+
+      // Enable the timer, as it may have previously been disabled
+      if (GetConVarBool(g_CvarDisableRound)) {
+         AcceptEntityInput(caller, "Enable");
+      }
 
       // A timer set to 0 will never elapse, so 0 is used as a 'do nothing' value.
       if (time > 0) {
