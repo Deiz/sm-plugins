@@ -22,6 +22,7 @@ new bool:g_Mirror[MAXPLAYERS+1];
 new bool:g_MirrorTaken[MAXPLAYERS+1];
 new bool:g_Locked[MAXPLAYERS+1];
 
+new mirrorme_flags = ADMFLAG_SLAY;
 
 public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 {
@@ -45,9 +46,11 @@ public OnPluginStart()
 
    g_CvarFriendlyFire = FindConVar("mp_friendlyfire");
 
-   AutoExecConfig(true, "plugin.mirrordamage");
-
    HookConVarChange(g_CvarPublicMirror, OnPublicMirrorChanged);
+
+   GetCommandOverride("sm_mirrorme", Override_Command, mirrorme_flags);
+
+   AutoExecConfig(true, "plugin.mirrordamage");
 
    if (g_CvarFriendlyFire != INVALID_HANDLE) {
       g_FriendlyFire = GetConVarBool(g_CvarFriendlyFire);
@@ -69,12 +72,25 @@ public OnClientPutInServer(client)
    g_Locked[client]      = false;
 }
 
+public OnRebuildAdminCache(AdminCachePart:part)
+{
+   if (part == AdminCache_Overrides) {
+      GetCommandOverride("sm_mirrorme", Override_Command, mirrorme_flags);
+      ResetOverride();
+   }
+}
+
 public OnPublicMirrorChanged(Handle:convar, const String:oldValue[], const String:newValue[])
 {
-   switch (GetConVarInt(convar)) {
+   ResetOverride();
+}
+
+ResetOverride()
+{  
+   switch (GetConVarInt(g_CvarPublicMirror)) {
       case 0:
       {
-         AddCommandOverride("sm_mirrorme", Override_Command, ADMFLAG_SLAY);
+         AddCommandOverride("sm_mirrorme", Override_Command, mirrorme_flags);
       }
       case 1:
       {
