@@ -81,7 +81,7 @@ public Action:Command_NoTarget(client, args)
    if (enable)
       action = "enabled";
 
-   ReplyToCommand(client, "[SM] No Target %s on %s", action, target_name);
+   ShowActivity2(client, "[SM] ", "No Target %s on %s", action, target_name);
 
    for (new i = 0; i < target_count; i++) {
       g_NoTarget[ target_list[i] ] = enable;
@@ -130,7 +130,7 @@ public Action:Command_NoTargetBuilding(client, args)
    if (enable)
       action = "enabled";
 
-   ReplyToCommand(client, "[SM] Building No Target %s on %s", action,
+   ShowActivity2(client, "[SM] ", "Building No Target %s on %s", action,
       target_name);
 
    new ent = -1;
