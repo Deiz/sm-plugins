@@ -1,6 +1,7 @@
 #include <sourcemod>
 #include <sdkhooks>
 #include <tf2_stocks>
+#include <notarget>
 
 #pragma semicolon 1
 
@@ -14,6 +15,15 @@ public Plugin:myinfo =
 
 new bool:g_NoTarget[MAXPLAYERS+1] = { false, ... };
 new bool:g_NoTargetBuilding[MAXPLAYERS+1] = { false, ... };
+
+public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
+{
+   CreateNative("Notarget_GetClientNotarget", Native_GetClientNotarget);
+   CreateNative("Notarget_SetClientNotarget", Native_SetClientNotarget);
+
+   RegPluginLibrary("notarget");
+   return APLRes_Success;
+}
 
 public OnPluginStart()
 {
@@ -181,4 +191,42 @@ public Action:Player_Spawned(Handle:event, const String:name[], bool:dontBroadca
       SetNoTarget(client, true);
 
    return Plugin_Continue;
+}
+
+public Native_GetClientNotarget(Handle:hPlugin, numParams)
+{
+   new client = GetNativeCell(1);
+   if (client < 1 || client > MaxClients) {
+      return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index %d", client);
+   }
+
+   if (!IsClientInGame(client)) {
+      return ThrowNativeError(SP_ERROR_NATIVE, "Client %d is not in game", client);
+   }
+
+   return g_NoTarget[client];
+}
+
+public Native_SetClientNotarget(Handle:hPlugin, numParams)
+{
+   new client = GetNativeCell(1);
+   if (client < 1 || client > MaxClients) {
+      return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index %d", client);
+   }
+
+   if (!IsClientInGame(client)) {
+      return ThrowNativeError(SP_ERROR_NATIVE, "Client %d is not in game", client);
+   }
+
+   new bool:enable = GetNativeCell(2);
+   if (enable && g_NoTarget[client]) {
+      return false;
+   }
+   else if (!enable && !g_NoTarget[client]) {
+      return false;
+   }
+
+   g_NoTarget[client] = enable;
+   SetNoTarget(client, enable);
+   return true;
 }
