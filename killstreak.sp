@@ -7,7 +7,7 @@ public Plugin:myinfo =
    name = "Killstreak Setter",
    author = "Forth",
    description = "Sets a player's killstreak to an arbitrary value",
-   version = "1.0"
+   version = "1.1"
 }
 
 new Handle:g_hCvarKSMin;
@@ -43,7 +43,7 @@ public Action:Command_Killstreak(client, args)
          n = max;
    }
 
-   SetEntProp(client, Prop_Send, "m_iKillStreak", n);
+   SetEntProp(client, Prop_Send, "m_nStreaks", n, _, 0);
    ReplyToCommand(client, "[SM] Set killstreak to: %d", n);
    return Plugin_Handled;
 }
