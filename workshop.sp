@@ -5,6 +5,8 @@
 new Handle:g_SearchResults;
 new Handle:g_MapList;
 
+#define SEARCHPATH  "../steamapps/workshop/content/440"
+
 public Plugin:myinfo =
 {
    name = "Workshop Map Search/Switch",
@@ -36,7 +38,9 @@ StripSuffix(String:out[], outlen, String:str[], String:suffix[])
 Search(client, String:name[], String:path[])
 {
    new Handle:dirh = INVALID_HANDLE;
-   decl String:buffer[128];
+   decl String:dirname[128], String:subpath[128];
+   decl String:filename[128], String:buffer[128];
+   decl String:tmp[128];
    new FileType:type = FileType_Unknown;
    new results;
 
@@ -46,12 +50,25 @@ Search(client, String:name[], String:path[])
    }
 
    dirh = OpenDirectory(path);
-   while (ReadDirEntry(dirh, buffer, sizeof(buffer), type)) {
-      if (type != FileType_File || !MapContainsStr(buffer, name, ".bsp"))
+   while (ReadDirEntry(dirh, dirname, sizeof(dirname), type)) {
+      if (type != FileType_Directory)
          continue;
 
-      PushArrayString(g_SearchResults, buffer);
-      results++;
+      Format(subpath, sizeof(subpath), "%s/%s", SEARCHPATH, dirname);
+      new Handle:subdirh = OpenDirectory(subpath);
+      while (ReadDirEntry(subdirh, filename, sizeof(filename), type)) {
+         if (type != FileType_File || !MapContainsStr(filename, name, ".bsp"))
+            continue;
+
+         /* Hack off trailing .bsp */
+         StripSuffix(tmp, sizeof(tmp), filename, ".bsp");
+
+         Format(buffer, sizeof(buffer), "%s.ugc%s", tmp, dirname);
+         PushArrayString(g_SearchResults, buffer);
+         results++;
+      }
+      if (subdirh != INVALID_HANDLE)
+        CloseHandle(subdirh);
    }
    if (dirh != INVALID_HANDLE)
 	    CloseHandle(dirh);
@@ -129,8 +146,6 @@ public Action:Command_MapSearch(client, args)
    decl String:cmd[16];
    GetCmdArg(0, cmd, sizeof(cmd));
 
-   new String:path[] = "maps/workshop";
-
    decl String:tmp[65], String:buffer[80];
    new results;
 
@@ -145,7 +160,7 @@ public Action:Command_MapSearch(client, args)
    if (strcmp(cmd, "sm_search") == 0)
       results = SearchMapList(arg);
    else
-      results = Search(client, arg, path);
+      results = Search(client, arg, SEARCHPATH);
 
    ReplyToCommand(client, "[SM] Search for \"%s\" returned %d result%s",
       arg, results, results != 1 ? "s" : "");
@@ -173,7 +188,7 @@ public Action:Command_WorkshopMap(client, args)
 
    new String:arg[64];
    GetCmdArg(1, arg, sizeof(arg));
-   results = Search(client, arg, "maps/workshop");
+   results = Search(client, arg, SEARCHPATH);
 
    if (results > 1 || results < 1) {
       /* Search for an exact match (to disambiguate between e.g.
