@@ -53,6 +53,9 @@ Search(client, String:name[], String:path[])
       PushArrayString(g_SearchResults, buffer);
       results++;
    }
+   if (dirh != INVALID_HANDLE)
+	    CloseHandle(dirh);
+
    SortADTArray(g_SearchResults, Sort_Ascending, Sort_String);
    return results;
 }
