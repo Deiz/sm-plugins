@@ -165,7 +165,14 @@ public Action:Command_RPS(client, args)
 public Action:Command_Dominations(client, args)
 {
    if (args < 1) {
-      ReplyToCommand(client, "[SM] Usage: sm_doms <#userid|name>");
+      new dom_offset   = FindSendPropInfo("CTFPlayer", "m_bPlayerDominated");
+      for (new i = 1; i <= MaxClients; i++) {
+         if (!IsClientInGame(i))
+            continue;
+
+         ShowDominations(client, i, dom_offset, "dominated");
+      }
+
       return Plugin_Handled;
    }
 
