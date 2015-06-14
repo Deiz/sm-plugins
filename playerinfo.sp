@@ -79,7 +79,7 @@ public Action:Command_PlayerInfo(client, args)
       client,
       target_list,
       MAXPLAYERS,
-      COMMAND_FILTER_NO_IMMUNITY|COMMAND_FILTER_NO_BOTS,
+      COMMAND_FILTER_NO_IMMUNITY,
       target_name,
       sizeof(target_name),
       tn_is_ml)) <= 0)
@@ -147,7 +147,7 @@ public Action:Command_RPS(client, args)
       client,
       target_list,
       MAXPLAYERS,
-      COMMAND_FILTER_NO_IMMUNITY|COMMAND_FILTER_NO_BOTS,
+      COMMAND_FILTER_NO_IMMUNITY,
       target_name,
       sizeof(target_name),
       tn_is_ml)) <= 0)
@@ -187,7 +187,7 @@ public Action:Command_Dominations(client, args)
       client,
       target_list,
       MAXPLAYERS,
-      COMMAND_FILTER_NO_IMMUNITY|COMMAND_FILTER_NO_BOTS,
+      COMMAND_FILTER_NO_IMMUNITY,
       target_name,
       sizeof(target_name),
       tn_is_ml)) <= 0)
