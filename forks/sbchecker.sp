@@ -3,11 +3,16 @@
 #include <sourcemod>
 
 #define VERSION "1.0.2"
-#define LISTBANS_USAGE "sm_listsbbans <#userid|name> - Lists a user's prior bans from Sourcebans"
+#define LISTBANS_USAGE "sm_listsbbans <#userid|name> - Lists prior bans from Sourcebans"
 
 new String:g_DatabasePrefix[10] = "sb";
 new Handle:g_ConfigParser;
 new Handle:g_DB;
+
+new g_BanCount[MAXPLAYERS+1] = { 0, ... };
+
+new Handle:g_timer;
+new Handle:g_OutputCache;
 
 public Plugin:myinfo = 
 {
@@ -24,9 +29,12 @@ public OnPluginStart()
 	
 	CreateConVar("sbchecker_version", VERSION, "", FCVAR_NOTIFY);
 	RegAdminCmd("sm_listsbbans", OnListSourceBansCmd, ADMFLAG_BAN, LISTBANS_USAGE);
+	RegAdminCmd("sm_listbans", OnListSourceBansCmd, ADMFLAG_BAN, LISTBANS_USAGE);
+	RegAdminCmd("sm_getresults", GetResults, ADMFLAG_ROOT, "sm_getresults");
 	RegAdminCmd("sb_reload", OnReloadCmd, ADMFLAG_RCON, "Reload sourcebans config and ban reason menu options");
 	
 	SQL_TConnect(OnDatabaseConnected, "sourcebans");
+	g_OutputCache = CreateArray(128);
 }
 
 public OnMapStart()
@@ -50,9 +58,11 @@ public OnDatabaseConnected(Handle:owner, Handle:hndl, const String:error[], any:
 
 public OnClientAuthorized(client, const String:auth[])
 {
+	g_BanCount[client] = 0;
+
 	if (g_DB == INVALID_HANDLE)
 		return;
-	
+
 	/* Do not check bots nor check player with lan steamid. */
 	if(auth[0] == 'B' || auth[9] == 'L')
 		return;
@@ -72,9 +82,12 @@ public OnConnectBanCheck(Handle:owner, Handle:hndl, const String:error[], any:us
 		return;
 		
 	new bancount = SQL_FetchInt(hndl, 0);
+	g_BanCount[client] = bancount;
+
 	if (bancount > 0)
 	{
-		PrintToBanAdmins("\x04[SBChecker]\x01 Warning: Player \"%N\" has %d previous SB ban%s on record.", client, bancount, ((bancount>0)?"s":""));
+		PrintToBanAdmins("\x04[SBChecker]\x01 Warning: Player \"%N\" has %d previous SB ban%s on record.",
+			client, bancount, (bancount > 1) ? "s" : "");
 	}
 }
 
@@ -82,7 +95,14 @@ public Action:OnListSourceBansCmd(client, args)
 {
 	if (args < 1)
 	{
-		ReplyToCommand(client, LISTBANS_USAGE);
+		for (new i=1; i<=MaxClients; i++) {
+			if (g_BanCount[i] > 0 && IsClientAuthorized(i))
+				ReplyToCommand(client, "[SBChecker] Player \"%N\" has %d ban%s on record.",
+					i, g_BanCount[i], (g_BanCount[i] > 1) ? "s" : "");
+		}
+
+		// ReplyToCommand(client, LISTBANS_USAGE);
+		return Plugin_Handled;
 	}
 	
 	if (g_DB == INVALID_HANDLE)
@@ -101,7 +121,7 @@ public Action:OnListSourceBansCmd(client, args)
 	}
 	
 	decl String:auth[32];
-	if (!GetClientAuthString(target, auth, sizeof(auth))
+	if (!GetClientAuthId(target, AuthId_Steam2, auth, sizeof(auth))
 		|| auth[0] == 'B' || auth[9] == 'L')
 	{
 		ReplyToCommand(client, "Error: could not retrieve %N's steam id.", target);
@@ -117,13 +137,14 @@ public Action:OnListSourceBansCmd(client, args)
 	
 	new Handle:pack = CreateDataPack();
 	WritePackCell(pack, (client == 0) ? 0 : GetClientUserId(client));
+	WritePackCell(pack, GetClientUserId(target));
 	WritePackString(pack, targetName);
 	
 	SQL_TQuery(g_DB, OnListBans, query, pack, DBPrio_Low);
 	
 	if (client == 0)
 	{
-		ReplyToCommand(client, "[SBChecker] Note: if you are using this command through an rcon tool, you will not see results.");
+		ReplyToCommand(client, "[SBChecker] Note: if you are using this command through an rcon tool, you must run sm_getresults afterwards");
 	}
 	else
 	{
@@ -133,25 +154,56 @@ public Action:OnListSourceBansCmd(client, args)
 	return Plugin_Handled;
 }
 
+public Action:GetResults(client, args)
+{
+	new lines = GetArraySize(g_OutputCache);
+	if (lines <= 0) {
+		ReplyToCommand(client, "[SM] No results available.");
+		return Plugin_Handled;
+	}
+
+	decl String:buf[128];
+	for (new i=0; i<lines; i++) {
+		GetArrayString(g_OutputCache, i, buf, sizeof(buf));
+		ReplyToCommand(client, buf);
+	}
+
+	TriggerTimer(g_timer);
+	return Plugin_Handled;
+}
+
 public OnListBans(Handle:owner, Handle:hndl, const String:error[], any:pack)
 {
 	ResetPack(pack);
 	new clientuid = ReadPackCell(pack);
 	new client = GetClientOfUserId(clientuid);
+
+	new targetuid = ReadPackCell(pack);
+	new target = GetClientOfUserId(targetuid);
+
 	decl String:targetName[MAX_NAME_LENGTH];
 	ReadPackString(pack, targetName, sizeof(targetName));
 	CloseHandle(pack);
 	
 	if (clientuid > 0 && client == 0)
 		return;
-	
+
+	if (g_timer != INVALID_HANDLE)
+		TriggerTimer(g_timer);
+
+	g_timer = CreateTimer(30.0, ClearData);
+
 	if (hndl == INVALID_HANDLE)
 	{
 		PrintListResponse(clientuid, client, "[SBChecker] DB error while retrieving bans for %s:\n%s", targetName, error);		
 		return;
 	}
 	
-	if (SQL_GetRowCount(hndl) == 0)
+	new bancount = SQL_GetRowCount(hndl);
+	if (target != 0)
+		g_BanCount[target] = bancount;
+
+	if (bancount == 0)
 	{
 		PrintListResponse(clientuid, client, "[SBChecker] No bans found for %s.", targetName);
 		return;
@@ -248,6 +300,7 @@ PrintListResponse(userid, client, const String:format[], any:...)
 	if (userid == 0)
 	{
 		PrintToServer("%s", msg);
+		PushArrayString(g_OutputCache, msg);
 	}
 	else
 	{
@@ -269,6 +322,14 @@ PrintToBanAdmins(const String:format[], any:...)
 			PrintToChat(i, "%s", msg);
 		}
 	}
+}
+
+public Action:ClearData(Handle:timer)
+{
+	g_timer = INVALID_HANDLE;
+
+	ClearArray(g_OutputCache);
+	return Plugin_Stop;
 }
 
 stock ReadConfig()
