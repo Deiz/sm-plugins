@@ -47,7 +47,7 @@ public OnPluginStart()
 
   // convar setup
   cv_hoptrigger = CreateConVar( "sm_hop_trigger",
-                                "!servers",
+                                "servers",
                                 "What players have to type in chat to activate the plugin (besides !hop)" );
   cv_serverformat = CreateConVar( "sm_hop_serverformat",
                                   "%name - %map (%numplayers/%maxplayers)",
@@ -66,8 +66,12 @@ public OnPluginStart()
   
   new Handle:timer = CreateTimer( REFRESH_TIME, RefreshServerInfo, _, TIMER_REPEAT );
 
-  RegConsoleCmd( "say", Command_Say );
-  RegConsoleCmd( "say_team", Command_Say );
+  RegConsoleCmd("hop", Command_Hop);
+
+  new String:trigger[256];
+  GetConVarString(cv_hoptrigger, trigger, sizeof(trigger))
+  if (strcmp(trigger, "") != 0)
+    RegConsoleCmd(trigger, Command_Hop)
 
   new String:path[MAX_STR_LEN];
   new Handle:kv;
@@ -92,28 +96,10 @@ public OnPluginStart()
   TriggerTimer( timer );
 }
 
-public Action:Command_Say( client, args )
+public Action:Command_Hop(client, args)
 {
-  new String:text[MAX_STR_LEN];
-  new startidx = 0;
-
-  if ( !GetCmdArgString( text, sizeof( text ) ) ) {
-    return Plugin_Continue;
-  }
-
-  if ( text[strlen( text) - 1] == '"' ) {
-    text[strlen( text )-1] = '\0';
-    startidx = 1;
-  }
-
-  new String:trigger[MAX_STR_LEN];
-  GetConVarString( cv_hoptrigger, trigger, sizeof( trigger ) );
-
-  if ( strcmp( text[startidx], trigger, false ) == 0 || strcmp( text[startidx], "!hop", false ) == 0 ) {
-    ServerMenu( client );
-  }
-
-  return Plugin_Continue;
+  ServerMenu(client);
+  return Plugin_Handled;
 }
 
 public Action:ServerMenu( client )
@@ -189,7 +175,7 @@ public Action:CleanUp( Handle:timer )
 {
   for ( new i = 0; i < serverCount; i++ ) {
     if ( strlen( serverInfo[i] ) == 0 && !socketError[i] ) {
-      LogError( "Server %s:%i is down: no timely reply received", serverAddress[i], serverPort[i] );
+      LogMessage( "Server %s:%i is down: no timely reply received", serverAddress[i], serverPort[i] );
       CloseHandle( socket[i] );
     }
   }
@@ -210,6 +196,7 @@ public Action:Advertise()
 {
   new String:trigger[MAX_STR_LEN];
   GetConVarString( cv_hoptrigger, trigger, sizeof( trigger ) );
+  Format(trigger, sizeof(trigger), "!%s", trigger);
 
   // skip servers being marked as down
   while ( strlen( serverInfo[advertCount] ) == 0 ) {
@@ -309,7 +296,7 @@ public OnSocketDisconnected( Handle:sock, any:i )
 
 public OnSocketError( Handle:sock, const errorType, const errorNum, any:i )
 {
-  LogError( "Server %s:%i is down: socket error %d (errno %d)", serverAddress[i], serverPort[i], errorType, errorNum );
+  LogMessage( "Server %s:%i is down: socket error %d (errno %d)", serverAddress[i], serverPort[i], errorType, errorNum );
   socketError[i] = true;
   CloseHandle( sock );
 }
