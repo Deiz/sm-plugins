@@ -219,23 +219,8 @@ public Action:RefreshServerInfo(Handle:timer)
   
   if (g_DB == INVALID_HANDLE)
     return Plugin_Continue;
-  
-  if (g_IP[0] != '\0') {
-    GetCurrentMap(map, sizeof(map));
-    players = GetPlayerCount();
 
-    new maxplayers;
-    new visiblemax = GetConVarInt(FindConVar("sv_visiblemaxplayers"));
-    if (visiblemax != -1)
-      maxplayers = visiblemax;
-    else
-      maxplayers = GetMaxHumanPlayers(); 
-
-    Format(query, sizeof(query), "INSERT INTO `server_info` (server_ip, update_time, numplayers, maxplayers, map) VALUES ('%s', %d, %d, %d, '%s') ON DUPLICATE KEY UPDATE update_time = VALUES(update_time), numplayers = VALUES(numplayers), maxplayers = VALUES(maxplayers), map = VALUES(map)",
-      g_IP, GetTime(), players, maxplayers, map);
-    SQL_TQuery(g_DB, OnInfoPushed, query);
-  }
-  else {
+  if (g_IP[0] == '\0') {
     LogError("Could not get public IP, trying to parse status output");
 
     new String:buf[512];
@@ -261,10 +246,27 @@ public Action:RefreshServerInfo(Handle:timer)
     else
       LogError("Could not get public IP from status output");
   }
+
+  if (g_IP[0] != '\0') {
+    GetCurrentMap(map, sizeof(map));
+    players = GetPlayerCount();
+
+    new maxplayers;
+    new visiblemax = GetConVarInt(FindConVar("sv_visiblemaxplayers"));
+    if (visiblemax != -1)
+      maxplayers = visiblemax;
+    else
+      maxplayers = GetMaxHumanPlayers(); 
+
+    Format(query, sizeof(query), "INSERT INTO `server_info` (server_ip, update_time, numplayers, maxplayers, map) VALUES ('%s', %d, %d, %d, '%s') ON DUPLICATE KEY UPDATE update_time = VALUES(update_time), numplayers = VALUES(numplayers), maxplayers = VALUES(maxplayers), map = VALUES(map)",
+      g_IP, GetTime(), players, maxplayers, map);
+    SQL_TQuery(g_DB, OnInfoPushed, query);
+  }
   
   new String:hostnames[MAX_SERVERS * 32];
   new written = 0;
-  
+
+  // Build a list of server hostnames, e.g. (x, y, z)
   for (new i=0; i<serverCount; i++) {
     decl String:hostname[32];
     Format(hostname, sizeof(hostname), "%s:%d", serverAddress[i], serverPort[i]);
