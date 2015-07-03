@@ -23,6 +23,7 @@ new String:serverName[MAX_SERVERS][MAX_STR_LEN];
 new String:serverAddress[MAX_SERVERS][MAX_STR_LEN];
 new serverPort[MAX_SERVERS];
 new String:serverInfo[MAX_SERVERS][MAX_INFO_LEN];
+new g_PlayerCount[MAX_SERVERS];
 
 new Handle:g_DB;
 new Handle:g_Timer;
@@ -114,7 +115,7 @@ public Action:ServerMenu( client )
   SetMenuTitle( menu, menuTitle );
 
   for ( new i = 0; i < serverCount; i++ ) {
-    if ( strlen( serverInfo[i] ) > 0 ) {
+    if (serverInfo[i][0] != '\0') {
       #if defined DEBUG then
         PrintToConsole( client, serverInfo[i] );
       #endif
@@ -179,18 +180,21 @@ public Action:Advertise()
   Format(trigger, sizeof(trigger), "!%s", trigger);
 
   // skip servers being marked as down
-  while ( strlen( serverInfo[advertCount] ) == 0 ) {
+  new max = serverCount;
+
+  while (serverInfo[advertCount][0] == '\0' || g_PlayerCount[advertCount] == 0) {
     #if defined DEBUG then
       LogError( "Not advertising down server %i", advertCount );
     #endif
     advertCount++;
-    if ( advertCount >= serverCount ) {
+    if ( advertCount >= serverCount )
       advertCount = 0;
+
+    if (max-- < 0)
       break;
-    }
   }
 
-  if ( strlen( serverInfo[advertCount] ) > 0 ) {
+  if (serverInfo[advertCount][0] != '\0') {
     PrintToChatAll( "\x04[\x03hop\x04]\x01 %t", "Advert", serverInfo[advertCount], trigger );
     #if defined DEBUG then
       LogError( "Advertising server %i (%s)", advertCount, serverInfo[advertCount] );
@@ -211,7 +215,7 @@ public OnMapStart()
 public Action:RefreshServerInfo(Handle:timer)
 { 
   for (new i=0; i<serverCount; i++)
-    serverInfo[i] = "";
+    serverInfo[i][0] = '\0';
   
   decl String:map[128];
   decl String:query[512];
@@ -387,6 +391,8 @@ public OnInfoRetrieved(Handle:owner, Handle:hndl, const String:error[], any:data
     }
     numplayers = SQL_FetchInt(hndl, 2);
     maxplayers = SQL_FetchInt(hndl, 3);
+
+    g_PlayerCount[matched] = numplayers;
 
     SQL_FetchString(hndl, 4, map, sizeof(map));
 
