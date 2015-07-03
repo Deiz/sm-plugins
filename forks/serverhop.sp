@@ -6,11 +6,11 @@
 */
 
 #include <sourcemod>
-#include <socket>
+#include <steamtools>
 
 #define PLUGIN_VERSION "0.8.1"
 #define MAX_SERVERS 10
-#define REFRESH_TIME 60.0
+#define REFRESH_TIME 30.0
 #define SERVER_TIMEOUT 10.0
 #define MAX_STR_LEN 160
 #define MAX_INFO_LEN 200
@@ -18,13 +18,15 @@
 
 new serverCount = 0;
 new advertCount = 0;
-new advertInterval = 1;
+new lastAdvert = 0;
 new String:serverName[MAX_SERVERS][MAX_STR_LEN];
 new String:serverAddress[MAX_SERVERS][MAX_STR_LEN];
 new serverPort[MAX_SERVERS];
 new String:serverInfo[MAX_SERVERS][MAX_INFO_LEN];
-new Handle:socket[MAX_SERVERS];
-new bool:socketError[MAX_SERVERS];
+
+new Handle:g_DB;
+new Handle:g_Timer;
+new String:g_IP[32];
 
 new Handle:cv_hoptrigger = INVALID_HANDLE
 new Handle:cv_serverformat = INVALID_HANDLE
@@ -64,7 +66,7 @@ public OnPluginStart()
 
   AutoExecConfig( true, "plugin.serverhop" );
   
-  new Handle:timer = CreateTimer( REFRESH_TIME, RefreshServerInfo, _, TIMER_REPEAT );
+  CreateTimer(REFRESH_TIME, RefreshServerInfo, _, TIMER_REPEAT);
 
   RegConsoleCmd("hop", Command_Hop);
 
@@ -93,7 +95,8 @@ public OnPluginStart()
   } while ( KvGotoNextKey( kv ) );
   serverCount = i;
 
-  TriggerTimer( timer );
+  if (Steam_IsConnected())
+    UpdateIP();
 }
 
 public Action:Command_Hop(client, args)
@@ -158,36 +161,13 @@ public MenuHandler( Handle:menu, MenuAction:action, param1, param2 )
   }
 }
 
-public Action:RefreshServerInfo( Handle:timer )
-{
-  for ( new i = 0; i < serverCount; i++ ) {
-    serverInfo[i] = "";
-    socketError[i] = false;
-    socket[i] = SocketCreate( SOCKET_UDP, OnSocketError );
-    SocketSetArg( socket[i], i );
-    SocketConnect( socket[i], OnSocketConnected, OnSocketReceive, OnSocketDisconnected, serverAddress[i], serverPort[i] );
-  }
-
-  CreateTimer( SERVER_TIMEOUT, CleanUp );
-}
-
 public Action:CleanUp( Handle:timer )
 {
-  for ( new i = 0; i < serverCount; i++ ) {
-    if ( strlen( serverInfo[i] ) == 0 && !socketError[i] ) {
-      LogMessage( "Server %s:%i is down: no timely reply received", serverAddress[i], serverPort[i] );
-      CloseHandle( socket[i] );
-    }
-  }
-
   // all server info is up to date: advertise
-  if ( GetConVarBool( cv_advert ) ) {
-    if ( advertInterval == GetConVarFloat( cv_advert_interval ) ) {
+  if (GetConVarBool(cv_advert)) {
+    if (GetTime() >= (lastAdvert + GetConVarInt(cv_advert_interval) * 60)) {
       Advertise();
-    }
-    advertInterval++;
-    if ( advertInterval > GetConVarFloat( cv_advert_interval ) ) {
-      advertInterval = 1;
+      lastAdvert = GetTime();
     }
   }
 }
@@ -223,81 +203,214 @@ public Action:Advertise()
   }
 }
 
-public OnSocketConnected( Handle:sock, any:i )
-{
-  decl String:requestStr[ 25 ];
-  Format( requestStr, sizeof( requestStr ), "%s", "\xFF\xFF\xFF\xFF\x54Source Engine Query" );
-  SocketSend( sock, requestStr, 25 );
+public OnMapStart()
+{ 
+  DatabaseConnect(INVALID_HANDLE);
 }
 
-GetByte( String:receiveData[], offset )
-{
-  return receiveData[offset];
-}
+public Action:RefreshServerInfo(Handle:timer)
+{ 
+  for (new i=0; i<serverCount; i++)
+    serverInfo[i] = "";
+  
+  decl String:map[128];
+  decl String:query[512];
+  new players;
+  
+  if (g_DB == INVALID_HANDLE)
+    return Plugin_Continue;
+  
+  if (g_IP[0] != '\0') {
+    GetCurrentMap(map, sizeof(map));
+    players = GetPlayerCount();
 
-String:GetString( String:receiveData[], dataSize, offset )
-{
-  decl String:serverStr[MAX_STR_LEN] = "";
-  new j = 0;
-  for ( new i = offset; i < dataSize; i++ ) {
-    serverStr[j] = receiveData[i];
-    j++;
-    if ( receiveData[i] == '\x0' ) {
-      break;
-    }
+    new maxplayers;
+    new visiblemax = GetConVarInt(FindConVar("sv_visiblemaxplayers"));
+    if (visiblemax != -1)
+      maxplayers = visiblemax;
+    else
+      maxplayers = GetMaxHumanPlayers(); 
+
+    Format(query, sizeof(query), "INSERT INTO `server_info` (server_ip, update_time, numplayers, maxplayers, map) VALUES ('%s', %d, %d, %d, '%s') ON DUPLICATE KEY UPDATE update_time = VALUES(update_time), numplayers = VALUES(numplayers), maxplayers = VALUES(maxplayers), map = VALUES(map)",
+      g_IP, GetTime(), players, maxplayers, map);
+    SQL_TQuery(g_DB, OnInfoPushed, query);
   }
-  return serverStr;
+  else {
+    LogError("Could not get public IP, trying to parse status output");
+
+    new String:buf[512];
+    ServerCommandEx(buf, sizeof(buf), "status");
+
+    new String:fragment[] = "(public ip: ";
+
+    new idx = StrContains(buf, fragment, true);
+    if (idx != -1) {
+      new start = idx + strlen(fragment);
+
+      new i = start;
+      while (i < sizeof(buf) && buf[i] != '\0' && buf[i] != ')')
+        i++;
+
+      if (i - start < sizeof(g_IP)) {
+        strcopy(g_IP, i - start + 1, buf[start]);
+        Format(buf, sizeof(buf), "%s:%d", g_IP, GetConVarInt(FindConVar("hostport")));
+        strcopy(g_IP, sizeof(g_IP), buf);
+        LogMessage("Got public IP from status: %s", g_IP);
+      }
+    }
+    else
+      LogError("Could not get public IP from status output");
+  }
+  
+  new String:hostnames[MAX_SERVERS * 32];
+  new written = 0;
+  
+  for (new i=0; i<serverCount; i++) {
+    decl String:hostname[32];
+    Format(hostname, sizeof(hostname), "%s:%d", serverAddress[i], serverPort[i]);
+    
+    written += Format(hostnames[written], sizeof(hostnames) - written, "'%s',", hostname);
+  }
+
+  if (written)
+    hostnames[written - 1] = '\0';
+  
+  Format(query, sizeof(query), "SELECT server_ip, update_time, numplayers, maxplayers, map FROM `server_info` WHERE server_ip IN (%s)",
+    hostnames);
+  
+  SQL_TQuery(g_DB, OnInfoRetrieved, query);
+
+  CreateTimer(5.0, CleanUp, _, TIMER_FLAG_NO_MAPCHANGE);
+  return Plugin_Continue;
 }
 
-public OnSocketReceive( Handle:sock, String:receiveData[], const dataSize, any:i )
+public Steam_SteamServersConnected()
+{ 
+  UpdateIP();
+}
+
+public Action:DatabaseConnect(Handle:timer)
+{ 
+  if (g_DB == INVALID_HANDLE) {
+    if (SQL_CheckConfig("server_hop"))
+      SQL_TConnect(OnDatabaseConnected, "server_hop");
+    else
+      SQL_TConnect(OnDatabaseConnected, "default");
+  }
+  
+  g_Timer = INVALID_HANDLE;
+}
+
+UpdateIP()
+{ 
+  new octets[4];
+  Steam_GetPublicIP(octets);
+  
+  Format(g_IP, sizeof(g_IP), "%d.%d.%d.%d:%d", octets[0], octets[1], octets[2], octets[3],
+    GetConVarInt(FindConVar("hostport")));
+}
+
+public OnDatabaseConnected(Handle:owner, Handle:hndl, const String:error[], any:data)
+{ 
+  if (hndl == INVALID_HANDLE) { 
+    LogError("Database failure: %s", error);
+    if (g_Timer == INVALID_HANDLE) 
+      g_Timer = CreateTimer(120.0, DatabaseConnect, _, TIMER_FLAG_NO_MAPCHANGE);
+    
+    return;
+  }
+  
+  g_DB = hndl;
+  SQL_TQuery(g_DB, OnTableCreated, "CREATE TABLE IF NOT EXISTS `server_info` (server_ip varchar(32) NOT NULL, update_time int(11) NOT NULL, numplayers tinyint(4) NOT NULL, maxplayers tinyint(4) NOT NULL, map varchar(128) NOT NULL, PRIMARY KEY (server_ip)) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+}
+
+public OnTableCreated(Handle:owner, Handle:hndl, const String:error[], any:data)
+{ 
+  if (hndl == INVALID_HANDLE)
+    SetFailState("Unable to create table: %s", error);
+  
+  RefreshServerInfo(INVALID_HANDLE);
+}
+
+public OnInfoPushed(Handle:owner, Handle:hndl, const String:error[], any:data)
+{ 
+  if (hndl == INVALID_HANDLE) {
+    LogError("Failed to push server info: %s", error);
+    return;
+  }
+}
+
+public OnInfoRetrieved(Handle:owner, Handle:hndl, const String:error[], any:data)
 {
-  new String:srvName[MAX_STR_LEN];
-  new String:mapName[MAX_STR_LEN];
-  new String:gameDir[MAX_STR_LEN];
-  new String:gameDesc[MAX_STR_LEN];
-  new String:numPlayers[MAX_STR_LEN];
-  new String:maxPlayers[MAX_STR_LEN];
+  if (hndl == INVALID_HANDLE) {
+    LogError("Failed to retrieve server info: %s", error);
+    return;
+  }
 
-  // parse server info
-  new offset = 2;
-  srvName = GetString( receiveData, dataSize, offset );
-  offset += strlen( srvName ) + 1;
-  mapName = GetString( receiveData, dataSize, offset );
-  offset += strlen( mapName ) + 1;
-  gameDir = GetString( receiveData, dataSize, offset );
-  offset += strlen( gameDir ) + 1;
-  gameDesc = GetString( receiveData, dataSize, offset );
-  offset += strlen( gameDesc ) + 1;
-  offset += 2;
-  IntToString( GetByte( receiveData, offset ), numPlayers, sizeof( numPlayers ) );
-  offset++;
-  IntToString( GetByte( receiveData, offset ), maxPlayers, sizeof( maxPlayers ) );
+  decl String:hostname[32];
+  decl String:fmt[160], String:formatted[160];
+  decl String:buf[32];
+  decl String:map[128];
+  new update_time, numplayers, maxplayers;
 
-  new String:format[MAX_STR_LEN];
-  GetConVarString( cv_serverformat, format, sizeof( format ) );
-  ReplaceString( format, strlen( format ), "%name", serverName[i], false );
-  ReplaceString( format, strlen( format ), "%map", mapName, false );
-  ReplaceString( format, strlen( format ), "%numplayers", numPlayers, false );
-  ReplaceString( format, strlen( format ), "%maxplayers", maxPlayers, false );
+  GetConVarString(cv_serverformat, fmt, sizeof(fmt));
 
-  serverInfo[i] = format;
+  new bool:seen[MAX_SERVERS] = { false, ... };
 
-  #if defined DEBUG then
-    LogError( serverInfo[i] );
-  #endif
+  while (SQL_FetchRow(hndl)) {
+    SQL_FetchString(hndl, 0, hostname, sizeof(hostname));
 
-  CloseHandle( sock );
+    new matched = -1;
+    for (new i=0; i<serverCount; i++) {
+      Format(buf, sizeof(buf), "%s:%d", serverAddress[i], serverPort[i]);
+      if (strcmp(hostname, buf) == 0) {
+        seen[i] = true;
+        matched = i;
+        break;
+      }
+    }
+
+    if (matched < 0) {
+      LogError("Got hostname \"%s\" that did not match anything configured",
+        hostname);
+
+      continue;
+    }
+
+    update_time = SQL_FetchInt(hndl, 1);
+
+    if (update_time < (GetTime() - 60)) {
+      LogMessage("Data for \"%s\" is stale, server may be down", hostname);
+      continue;
+    }
+    numplayers = SQL_FetchInt(hndl, 2);
+    maxplayers = SQL_FetchInt(hndl, 3);
+
+    SQL_FetchString(hndl, 4, map, sizeof(map));
+
+    strcopy(formatted, sizeof(formatted), fmt);
+    ReplaceString(formatted, sizeof(formatted), "%name", serverName[matched], false);
+    ReplaceString(formatted, sizeof(formatted), "%map", map, false);
+
+    Format(buf, sizeof(buf), "%d", numplayers);
+    ReplaceString(formatted, sizeof(formatted), "%numplayers", buf, false);
+
+    Format(buf, sizeof(buf), "%d", maxplayers);
+    ReplaceString(formatted, sizeof(formatted), "%maxplayers", buf, false);
+    serverInfo[matched] = formatted;
+  }
+
+  for (new i=0; i<serverCount; i++)
+    if (!seen[i])
+      LogMessage("No entry for server \"%s\" was found in the database", serverName[i]);
 }
 
-public OnSocketDisconnected( Handle:sock, any:i )
+GetPlayerCount()
 {
-  CloseHandle( sock );
-}
+  new players = 0;
+  for (new i=1; i<=MaxClients; i++)
+    if (IsClientConnected(i) && !IsFakeClient(i))
+      players++;
 
-public OnSocketError( Handle:sock, const errorType, const errorNum, any:i )
-{
-  LogMessage( "Server %s:%i is down: socket error %d (errno %d)", serverAddress[i], serverPort[i], errorType, errorNum );
-  socketError[i] = true;
-  CloseHandle( sock );
+  return players;
 }
-
