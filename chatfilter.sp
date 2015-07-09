@@ -1,8 +1,10 @@
 #include <sourcemod>
-#include <scp>
 #include <regex>
 #include <tf2_stocks>
 #include <sdktools>
+
+#define REQUIRE_PLUGIN
+#include <scp>
 
 #define CONFIG_PATH "configs/chatfilter.txt"
 
@@ -13,6 +15,9 @@ new Handle:g_FilterStrings;
 new Handle:g_Regexes;
 
 /* Array of punishment bitmasks for each regex. */
+new Handle:g_FilterMasks;
+
+/* Array of arrays with punishment data for each pattern (length, damage) */
 new Handle:g_FilterData;
 
 new g_nFilters;
@@ -33,6 +38,20 @@ new String:g_Actions[][] = {
   "markfordeathsilent"
 };
 
+enum actionIndexes {
+  IND_SUPPRESS = 0,
+  IND_BLEED,
+  IND_IGNITE,
+  IND_KICK,
+  IND_SLAY,
+  IND_STUN,
+  IND_SLAP,
+  IND_MILK,
+  IND_JARATE,
+  IND_MARKFORDEATH,
+  IND_MARKFORDEATHSILENT
+};
+
 #define ACTION_SUPPRESS (1 << 0)
 #define ACTION_BLEED    (1 << 1)
 #define ACTION_IGNITE   (1 << 2)
@@ -43,7 +62,9 @@ new String:g_Actions[][] = {
 #define ACTION_MILK     (1 << 7)
 #define ACTION_JARATE   (1 << 8)
 #define ACTION_MARKFORDEATH (1 << 9)
-#define ACTION_MARKFORDEATHSILENT (1 << 9)
+#define ACTION_MARKFORDEATHSILENT (1 << 10)
+
+#define ACTION_HASDATA (1 << 31)
 
 public Plugin:myinfo =
 {
@@ -97,7 +118,7 @@ public Action:OnChatMessage(&author, Handle:recipients, String:name[], String:me
     if (iError != REGEX_ERROR_NONE)
       LogError(error);
     else if (found > 0) {
-      new mask = GetArrayCell(g_FilterData, i);
+      new mask = GetArrayCell(g_FilterMasks, i);
 
       if (mask & ACTION_SUPPRESS)
         suppress = RestrictToSelf(author, recipients);
@@ -108,15 +129,19 @@ public Action:OnChatMessage(&author, Handle:recipients, String:name[], String:me
           SetArrayCell(g_LastTrigger[author], j, 0);
       }
 
-      // Ensure that each regex only triggers once per message.
+      /* Ensure that each regex only triggers once per message. */
       if (GetArrayCell(g_LastTrigger[author], i) != tick) {
         decl String:buf[MAXLENGTH_INPUT];
         GetArrayString(g_FilterStrings, i, buf, sizeof(buf));
 
-        LogMessage("\"%N\" triggered filter \"%s\" with \"%s\"",
+        LogMessage("\"%L\" triggered filter \"%s\" with \"%s\"",
           author, buf, message);
 
-        PunishPlayer(author, mask);
+        new Handle:data;
+        if (mask & ACTION_HASDATA)
+          data = GetArrayCell(g_FilterData, i);
+
+        PunishPlayer(author, mask, data);
 
         SetArrayCell(g_LastTrigger[author], i, tick);
       }
@@ -132,7 +157,7 @@ public Action:OnChatMessage(&author, Handle:recipients, String:name[], String:me
 public Action:Command_Reload(client, args)
 {
   ParseConfig();
-  LogAction(client, -1, "\"%L\" reloaded the chat filters");
+  LogAction(client, -1, "\"%L\" reloaded the chat filters", client);
   ReplyToCommand(client, "[SM] Parsed %d filters.", g_nFilters);
 
   return Plugin_Handled;
@@ -156,44 +181,89 @@ bool:RestrictToSelf(client, Handle:recipients)
   return true;
 }
 
-bool:PunishPlayer(client, mask)
+bool:PunishPlayer(client, mask, Handle:data)
 {
-  if (mask & ACTION_BLEED)
+  new bool:hasdata = false;
+  new Float:fv;
+  new iv;
+
+  if (data != INVALID_HANDLE)
+    hasdata = true;
+
+  if (mask & ACTION_BLEED) {
+    if (!hasdata || (fv = GetFloatValue(data, IND_BLEED)) == -1.0)
+      fv = 5.0;
+
     TF2_MakeBleed(client, client, 5.0);
+  }
 
   if (mask & ACTION_IGNITE)
     TF2_IgnitePlayer(client, client);
 
-  if (mask & ACTION_STUN)
-    TF2_StunPlayer(client, 5.0, 0.1, TF_STUNFLAG_THIRDPERSON|TF_STUNFLAG_NOSOUNDOREFFECT, 0);
+  if (mask & ACTION_STUN) {
+    if (!hasdata || (fv = GetFloatValue(data, IND_BLEED)) == -1.0)
+      fv = 5.0;
 
-  if (mask & ACTION_SLAP)
-    SlapPlayer(client, _, _);
+    TF2_StunPlayer(client, fv, 0.5, TF_STUNFLAG_THIRDPERSON|TF_STUNFLAG_NOSOUNDOREFFECT, 0);
+  }
 
-  if (mask & ACTION_MILK)
-    TF2_AddCondition(client, TFCond_Milked, 30.0);
+  if (mask & ACTION_SLAP) {
+    if (hasdata && (iv = GetValue(data, IND_SLAP)) != -1)
+      SlapPlayer(client, iv, _);
+    else
+      SlapPlayer(client, _, _);
+  }
 
-  if (mask & ACTION_JARATE)
-    TF2_AddCondition(client, TFCond_Jarated, 30.0);
+  if (mask & ACTION_MILK) {
+    if (!hasdata || (fv = GetFloatValue(data, IND_MILK)) == -1.0)
+      fv = 30.0;
 
-  if (mask & ACTION_MARKFORDEATH)
-    TF2_AddCondition(client, TFCond_PreventDeath, 30.0);
+    TF2_AddCondition(client, TFCond_Milked, fv);
+  }
 
-  if (mask & ACTION_MARKFORDEATHSILENT)
-    TF2_AddCondition(client, TFCond_MarkedForDeathSilent, 30.0);
+  if (mask & ACTION_JARATE) {
+    if (!hasdata || (fv = GetFloatValue(data, IND_JARATE)) == -1.0)
+      fv = 30.0;
+
+    TF2_AddCondition(client, TFCond_Jarated, fv);
+  }
+
+  if (mask & ACTION_MARKFORDEATH) {
+    if (!hasdata || (fv = GetFloatValue(data, IND_MARKFORDEATH)) == -1.0)
+      fv = 30.0;
+
+    TF2_AddCondition(client, TFCond_MarkedForDeath, fv);
+  }
+
+  if (mask & ACTION_MARKFORDEATHSILENT) {
+    if (!hasdata || (fv = GetFloatValue(data, IND_MARKFORDEATHSILENT)) == -1.0)
+      fv = 30.0;
+
+    TF2_AddCondition(client, TFCond_MarkedForDeathSilent, fv);
+  }
 
   if (mask & ACTION_SLAY)
     ForcePlayerSuicide(client);
 
   if (mask & ACTION_KICK)
-    KickClient(client);
+    KickClient(client, "Client %d overflowed reliable channel", client);
 }
 
-#if 0
-public OnClientPutInServer(client)
+Float:GetFloatValue(Handle:data, action)
 {
+  if (data == INVALID_HANDLE)
+    return -1.0;
+
+  return Float:GetArrayCell(data, action);
 }
-#endif
+
+GetValue(Handle:data, action)
+{
+  if (data == INVALID_HANDLE)
+    return -1;
+
+  return RoundFloat(Float:GetArrayCell(data, action));
+}
 
 ParseConfig()
 {
@@ -203,14 +273,24 @@ ParseConfig()
   if (g_FilterStrings != INVALID_HANDLE)
     CloseHandle(g_FilterStrings);
 
-  if (g_FilterData != INVALID_HANDLE)
-    CloseHandle(g_FilterData);
-
   if (g_Regexes != INVALID_HANDLE) {
     for (new i = 0; i < GetArraySize(g_Regexes); i++)
       CloseHandle(GetArrayCell(g_Regexes, i));
 
     CloseHandle(g_Regexes);
+  }
+
+  if (g_FilterMasks != INVALID_HANDLE)
+    CloseHandle(g_FilterMasks);
+
+  if (g_FilterData != INVALID_HANDLE) {
+    for (new i=0; i<GetArraySize(g_FilterData); i++) {
+      new Handle:data = GetArrayCell(g_FilterData, i);
+      if (data != INVALID_HANDLE)
+        CloseHandle(data);
+    }
+
+    CloseHandle(g_FilterData);
   }
 
   for (new i=0; i<g_nFilters; i++) {
@@ -231,16 +311,26 @@ ParseConfig()
 
   g_FilterStrings = CreateArray(MAXLENGTH_INPUT);
   g_Regexes = CreateArray();
+  g_FilterMasks = CreateArray();
   g_FilterData = CreateArray();
 
   if (KvGotoFirstSubKey(hKeyValues)) {
     do {
-      /* Get the regex. */
+      /* Get the title. */
       KvGetSectionName(hKeyValues, buffer, sizeof(buffer));
+
+      /* Get the regex. */
+      decl String:regexstr[256];
+      KvGetString(hKeyValues, "pattern", regexstr, sizeof(regexstr));
+
+      if (regexstr[0] == '\0') {
+        LogError("No pattern key found for \"%s\"", buffer);
+        continue;
+      }
 
       decl String:error[256];
       new RegexError:iError;
-      new Handle:regex = CompileRegex(buffer, PCRE_CASELESS, error, sizeof(error), iError);
+      new Handle:regex = CompileRegex(regexstr, PCRE_CASELESS, error, sizeof(error), iError);
       if (iError != REGEX_ERROR_NONE) {
         LogError(error);
         continue;
@@ -264,6 +354,8 @@ ParsePunishments(const String:filtertext[], Handle:hKeyValues)
   new mask, attr;
   decl String:buffer[32], String:name[8];
 
+  new Handle:data;
+
   mask = 0;
   attr = 0;
 
@@ -280,9 +372,28 @@ ParsePunishments(const String:filtertext[], Handle:hKeyValues)
 
     new bool:found = false;
     for (new i=0; i<sizeof(g_Actions); i++) {
-      if (strcmp(buffer, g_Actions[i]) == 0) {
+      decl String:type[32];
+      new ind = SplitString(buffer, ":", type, sizeof(type));
+      if (ind == -1)
+        type = buffer;
+
+      if (strcmp(type, g_Actions[i]) == 0) {
         mask |= (1 << i);
         found = true;
+
+        /* Create data array if set. */
+        if (ind != -1) {
+          if (data == INVALID_HANDLE) {
+            mask |= ACTION_HASDATA;
+
+            data = CreateArray(_, sizeof(g_Actions));
+            for (new j=0; j<sizeof(g_Actions); j++)
+              SetArrayCell(data, j, -1.0);
+          }
+
+          SetArrayCell(data, i, Float:StringToFloat(buffer[ind]));
+        }
+
         break;
       }
     }
@@ -294,5 +405,6 @@ ParsePunishments(const String:filtertext[], Handle:hKeyValues)
     attr++;
   }
 
-  PushArrayCell(g_FilterData, mask);
+  PushArrayCell(g_FilterMasks, mask);
+  PushArrayCell(g_FilterData, data);
 }
