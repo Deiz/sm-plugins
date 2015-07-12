@@ -2,11 +2,14 @@
 #include <regex>
 #include <tf2_stocks>
 #include <sdktools>
+#include <basecomm>
 
 #define REQUIRE_PLUGIN
 #include <scp>
 
 #define CONFIG_PATH "configs/chatfilter.txt"
+
+new Handle:g_CvarStealthGag;
 
 /* Array of regex strings to match messages with. */
 new Handle:g_FilterStrings;
@@ -24,6 +27,10 @@ new g_nFilters;
 
 new Handle:g_LastTrigger[MAXPLAYERS+1];
 
+new bool:g_NewMessage[MAXPLAYERS+1] = { false, ... };
+
+new g_Gagged[MAXPLAYERS+1];
+
 new String:g_Actions[][] = {
   "suppress",
   "bleed",
@@ -35,7 +42,9 @@ new String:g_Actions[][] = {
   "milk",
   "jarate",
   "markfordeath",
-  "markfordeathsilent"
+  "markfordeathsilent",
+  "mute",
+  "gag"
 };
 
 enum actionIndexes {
@@ -49,7 +58,9 @@ enum actionIndexes {
   IND_MILK,
   IND_JARATE,
   IND_MARKFORDEATH,
-  IND_MARKFORDEATHSILENT
+  IND_MARKFORDEATHSILENT,
+  IND_MUTE,
+  IND_GAG
 };
 
 #define ACTION_SUPPRESS (1 << 0)
@@ -63,6 +74,8 @@ enum actionIndexes {
 #define ACTION_JARATE   (1 << 8)
 #define ACTION_MARKFORDEATH (1 << 9)
 #define ACTION_MARKFORDEATHSILENT (1 << 10)
+#define ACTION_MUTE     (1 << 11)
+#define ACTION_GAG      (1 << 12)
 
 #define ACTION_HASDATA (1 << 31)
 
@@ -86,6 +99,11 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 
 public OnPluginStart()
 {
+  AddCommandListener(Command_Say, "say");
+
+  g_CvarStealthGag = CreateConVar("sm_chatfilter_stealthgag", "1",
+    "Whether gagged player should see their own chat");
+
   RegAdminCmd("sm_chatfilter_reload", Command_Reload, ADMFLAG_ROOT, "sm_chatfilter_reload");
   ParseConfig();
 }
@@ -96,12 +114,28 @@ public OnLibraryRemoved(const String:name[])
     SetFailState("Simple Chat Processor unloaded, plugin disabled");
 }
 
+public OnClientConnected(client)
+{
+  g_Gagged[client] = false;
+}
+
 public OnClientDisconnect_Post(client)
 {
   if (g_LastTrigger[client] != INVALID_HANDLE) {
     CloseHandle(g_LastTrigger[client]);
     g_LastTrigger[client] = INVALID_HANDLE;
   }
+
+  g_NewMessage[client] = false;
+}
+public Action:Command_Say(client, const String:command[], argc)
+{
+  g_NewMessage[client] = true;
+}
+
+public BaseComm_OnClientGag(client, bool:gagState)
+{
+  g_Gagged[client] = gagState;
 }
 
 public Action:OnChatMessage(&author, Handle:recipients, String:name[], String:message[])
@@ -111,6 +145,27 @@ public Action:OnChatMessage(&author, Handle:recipients, String:name[], String:me
   new RegexError:iError;
 
   new tick = GetGameTickCount();
+
+  new bool:changed = false;
+  if (g_NewMessage[author]) {
+    g_NewMessage[author] = false;
+
+    /* Author must be sent an all chat message while dead. */
+    if (!IsPlayerAlive(author) && (GetMessageFlags() & CHATFLAGS_ALL)) {
+      new TFTeam:authorteam = TF2_GetClientTeam(author);
+
+      for (new i=1; i<=MaxClients; i++) {
+        /* Recipient must be alive. */
+        if (!IsClientConnected(i) || !IsClientInGame(i) || !IsPlayerAlive(i))
+          continue;
+
+        if (TF2_GetClientTeam(i) != authorteam) {
+          PushArrayCell(recipients, i);
+          changed = true;
+        }
+      }
+    }
+  }
 
   for (new i=0; i<g_nFilters; i++) {
     new Handle:regex = GetArrayCell(g_Regexes, i);
@@ -148,8 +203,14 @@ public Action:OnChatMessage(&author, Handle:recipients, String:name[], String:me
     }
   }
 
+  if (!suppress && g_Gagged[author])
+    suppress = RestrictToSelf(author, recipients);
+
   if (suppress)
     return Plugin_Stop;
+
+  if (changed)
+    return Plugin_Changed;
 
   return Plugin_Continue;
 }
@@ -240,6 +301,16 @@ bool:PunishPlayer(client, mask, Handle:data)
       fv = 30.0;
 
     TF2_AddCondition(client, TFCond_MarkedForDeathSilent, fv);
+  }
+
+  if (mask & ACTION_MUTE)
+    BaseComm_SetClientMute(client, true);
+
+  if (mask & ACTION_GAG) {
+    if (GetConVarBool(g_CvarStealthGag))
+      g_Gagged[client] = true;
+    else
+      BaseComm_SetClientGag(client, true);
   }
 
   if (mask & ACTION_SLAY)
