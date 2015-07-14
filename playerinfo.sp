@@ -9,7 +9,7 @@ public Plugin:myinfo =
    name = "[TF2] Player Info",
    author = "Forth",
    description = "Displays basic information about players",
-   version = "1.2"
+   version = "1.3"
 }
 
 new g_RPS[MAXPLAYERS+1][2];
@@ -42,6 +42,7 @@ public OnPluginStart()
    LoadTranslations("common.phrases");
 
    RegConsoleCmd("sm_playerinfo", Command_PlayerInfo, "sm_playerinfo <#userid|name>");
+   RegConsoleCmd("sm_pi", Command_PlayerInfo, "sm_pi <#userid|name>");
    RegConsoleCmd("sm_rps", Command_RPS, "sm_rps <#userid|name>");
    RegConsoleCmd("sm_doms", Command_Dominations, "sm_doms <#userid|name>");
    HookEvent("rps_taunt_event", Event_RPS, EventHookMode_Post);
