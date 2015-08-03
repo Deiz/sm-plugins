@@ -17,6 +17,7 @@ public OnPluginStart()
 	LoadTranslations("common.phrases");
 	RegAdminCmd("sm_goto", Command_Goto, ADMFLAG_SLAY,"Go to a player");
 	RegAdminCmd("sm_bring", Command_Bring, ADMFLAG_SLAY,"Teleport a player to you");
+	RegAdminCmd("sm_bringtome", Command_Bring, ADMFLAG_SLAY,"Teleport a player to you");
 
 	CreateConVar("goto_version", "1.2", "Dr. HyperKiLLeRs Player Teleport",FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_UNLOGGED|FCVAR_DONTRECORD|FCVAR_REPLICATED|FCVAR_NOTIFY);
 
@@ -62,18 +63,28 @@ public Action:Command_Goto(Client,args)
 	//Teleport
 	TeleportEntity(Client, TeleportOrigin, NULL_VECTOR, NULL_VECTOR);
 
+	if (args > 1)
+	{
+		GetCmdArg(2, arg, sizeof(arg));
+		new Float:offset = StringToFloat(arg);
+		TeleportOrigin[2] += offset;
+	}
+
 	return Plugin_Handled;
 }
 
 public Action:Command_Bring(client,args)
 {
-    //Error:
+	decl String:cmd[16];
+	GetCmdArg(0, cmd, sizeof(cmd));
+
+	//Error:
 	if(args < 1)
 	{
 
 		//Print:
-		PrintToConsole(client, "Usage: sm_bring <name>");
-		PrintToChat(client, "Usage:\x04 sm_bring <name>");
+		PrintToConsole(client, "Usage: %s <name>", cmd);
+		PrintToChat(client, "Usage:\x04 %s <name>", cmd);
 
 		//Return:
 		return Plugin_Handled;
@@ -106,13 +117,31 @@ public Action:Command_Bring(client,args)
 	new Float:PlayerOrigin[3];
 
 
-	//Initialize
-	GetCollisionPoint(client, PlayerOrigin);
-
 	//Math
-	TeleportOrigin[0] = PlayerOrigin[0];
-	TeleportOrigin[1] = PlayerOrigin[1];
-	TeleportOrigin[2] = (PlayerOrigin[2] + 4);
+	if (strcmp(cmd, "sm_bring") == 0)
+	{
+		//Initialize
+		GetCollisionPoint(client, PlayerOrigin);
+
+		TeleportOrigin[0] = PlayerOrigin[0];
+		TeleportOrigin[1] = PlayerOrigin[1];
+		TeleportOrigin[2] = (PlayerOrigin[2] + 4);
+	}
+	else
+	{
+		GetClientAbsOrigin(client, PlayerOrigin);
+		TeleportOrigin[0] = PlayerOrigin[0];
+		TeleportOrigin[1] = PlayerOrigin[1];
+		TeleportOrigin[2] = (PlayerOrigin[2] + 73);
+	}
+
+	if (args > 1)
+	{
+		decl String:arg[16];
+		GetCmdArg(2, arg, sizeof(arg));
+		new Float:offset = StringToFloat(arg);
+		TeleportOrigin[2] += offset;
+	}
 
 	for (new i = 0; i < target_count; i++)
 	{
