@@ -1,6 +1,10 @@
 #include <sourcemod>
 #include <geoip>
+#include <geoipcity>
 #include <tf2_stocks>
+
+#undef REQUIRE_PLUGIN
+#include <killtracker>
 
 #pragma semicolon 1
 
@@ -11,6 +15,8 @@ public Plugin:myinfo =
    description = "Displays basic information about players",
    version = "1.3"
 }
+
+new bool:g_bKillTracker;
 
 new g_RPS[MAXPLAYERS+1][2];
 
@@ -46,6 +52,23 @@ public OnPluginStart()
    RegConsoleCmd("sm_rps", Command_RPS, "sm_rps <#userid|name>");
    RegConsoleCmd("sm_doms", Command_Dominations, "sm_doms <#userid|name>");
    HookEvent("rps_taunt_event", Event_RPS, EventHookMode_Post);
+}
+
+public OnAllPluginsLoaded()
+{
+   g_bKillTracker = LibraryExists("killtracker");
+}
+
+public OnLibraryAdded(const String:name[])
+{
+   if (strcmp(name, "killtracker") == 0)
+      g_bKillTracker = true;
+}
+
+public OnLibraryRemoved(const String:name[])
+{
+   if (strcmp(name, "killtracker"))
+      g_bKillTracker = false;
 }
 
 public OnClientPutInServer(client)
@@ -113,6 +136,15 @@ public Action:Command_PlayerInfo(client, args)
 
          if (strlen(country))
             ReplyToCommand(client, "  %s", country);
+      }
+
+      if (g_bKillTracker) {
+        new uniques = KillTracker_UniqueVictims(target);
+        if (uniques) {
+          new minutes = RoundFloat((GetTime() - KillTracker_FirstKill(target)) / 60.0);
+          ReplyToCommand(client, "  Unique Victims: %2d in the past %d minute%s",
+            uniques, minutes, (minutes == 1) ? "" : "s");
+        }
       }
 
       ReplyToCommand(client, "  Kills: %8d Assists: %4d Deaths: %7d Damage: %5d",
