@@ -1,0 +1,21 @@
+// Filters messages with regular expressions and applies actions to them.
+// The structure is similar to TF2Items manager, an example would be:
+//
+// "chat_filter"
+// {
+//   "description (appears in logs)"
+//   {
+//     "pattern" "bad phrase"
+//     "1" "suppress"
+//     "2" "ignite"
+//     "3" "slap:10" // Slaps for 10 damage
+//   }
+// }
+//
+// The above would suppress any message containing "bad phrase" and ignite and
+// slap the player saying it.
+//
+// The full list of actions is:
+//   suppress, bleed, ignite, kick, slay, stun, slap, milk, jarate
+//   markfordeath, markfordeathsilent, mute, gag
+//
