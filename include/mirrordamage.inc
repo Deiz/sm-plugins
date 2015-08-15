@@ -14,7 +14,7 @@ native MirrorDamage_Enable(client, MirrorType:mType=MirrorDealt, bool:enable=tru
 
 public SharedPlugin:__pl_mirrordamage =
 {
-  name = "Mirror Damage",
+  name = "mirrordamage",
   file = "mirrordamage.smx",
 #if defined REQUIRE_PLUGIN
   required = 1,

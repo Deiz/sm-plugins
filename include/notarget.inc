@@ -8,7 +8,7 @@ native bool:Notarget_SetClientNotarget(client, bool:enable);
 
 public SharedPlugin:__pl_notarget =
 {
-  name = "No Target",
+  name = "notarget",
   file = "notarget.smx",
 #if defined REQUIRE_PLUGIN
   required = 1,

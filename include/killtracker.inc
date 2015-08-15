@@ -10,7 +10,7 @@ forward void OnUniqueVictimAdded(client, nvictims);
 
 public SharedPlugin:__pl_killtracker =
 {
-  name = "Kill Tracker",
+  name = "killtracker",
   file = "killtracker.smx",
 #if defined REQUIRE_PLUGIN
   required = 1,
