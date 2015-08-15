@@ -6,6 +6,8 @@
 native KillTracker_UniqueVictims(client);
 native KillTracker_FirstKill(client);
 
+forward void OnUniqueVictimAdded(client, nvictims);
+
 public SharedPlugin:__pl_killtracker =
 {
   name = "Kill Tracker",

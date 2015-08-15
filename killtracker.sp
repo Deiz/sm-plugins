@@ -12,6 +12,8 @@ public Plugin:myinfo =
   version = "1.0"
 }
 
+new Handle:g_UniqueVictimAddedForward;
+
 new Handle:g_CvarEnabled;
 new Handle:g_CvarFriendlyFire;
 
@@ -84,6 +86,9 @@ public OnPluginStart()
       }
     }
   }
+
+  g_UniqueVictimAddedForward = CreateGlobalForward("OnUniqueVictimAdded",
+    ET_Ignore, Param_Cell, Param_Cell);
 
   CreateTimer(300.0, PruneTimer, 2400, TIMER_REPEAT);
 }
@@ -170,6 +175,11 @@ public Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
     SetTrieValue(killerhash, g_CachedID[victim], killvictimarray);
 
     PushArrayString(victimarray, g_CachedID[victim]);
+
+    Call_StartForward(g_UniqueVictimAddedForward);
+    Call_PushCell(killer);
+    Call_PushCell(GetTrieSize(killerhash));
+    Call_Finish();
   }
 
   PushArrayCell(killvictimarray, GetTime());
