@@ -1,6 +1,7 @@
 #include <sourcemod>
 #include <sdkhooks>
 #include <tf2_stocks>
+#include <mirrordamage>
 
 #pragma semicolon 1
 
@@ -27,6 +28,11 @@ new mirrorme_flags = ADMFLAG_SLAY;
 public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 {
    g_bLateLoad = late;
+
+   CreateNative("MirrorDamage_Status", Native_Status);
+   CreateNative("MirrorDamage_Enable", Native_Enable);
+   RegPluginLibrary("mirrordamage");
+
    return APLRes_Success;
 }
 
@@ -86,7 +92,7 @@ public OnPublicMirrorChanged(Handle:convar, const String:oldValue[], const Strin
 }
 
 ResetOverride()
-{  
+{
    switch (GetConVarInt(g_CvarPublicMirror)) {
       case 0:
       {
@@ -212,4 +218,74 @@ public Action:Command_ListMirrors(client, args)
          i, g_Mirror[i] ? "Yes" : "No", g_MirrorTaken[i] ? "Yes" : "No");
    }
    return Plugin_Handled;
+}
+
+public Native_Status(Handle:hPlugin, numParams)
+{
+   new client = GetNativeCell(1);
+   if (client < 1 || client > MaxClients) {
+      return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index %d", client);
+   }
+
+   if (!IsClientInGame(client)) {
+      return ThrowNativeError(SP_ERROR_NATIVE, "Client %d is not in game", client);
+   }
+
+   new MirrorType:mType = GetNativeCell(2);
+   switch (mType)
+   {
+      case MirrorDealt:
+      {
+         return g_Mirror[client];
+      }
+      case MirrorTaken:
+      {
+         return g_MirrorTaken[client];
+      }
+      case MirrorLocked:
+      {
+         return g_Locked[client];
+      }
+   }
+
+   return ThrowNativeError(SP_ERROR_NATIVE,
+      "Mirror type %d is invalid", mType);
+}
+
+public Native_Enable(Handle:hPlugin, numParams)
+{
+   new client = GetNativeCell(1);
+   if (client < 1 || client > MaxClients) {
+      return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index %d", client);
+   }
+
+   if (!IsClientInGame(client)) {
+      return ThrowNativeError(SP_ERROR_NATIVE, "Client %d is not in game", client);
+   }
+
+   new MirrorType:mType = GetNativeCell(2);
+   new bool:enable = GetNativeCell(3);
+
+   switch (mType)
+   {
+      case MirrorDealt:
+      {
+         g_Mirror[client] = enable;
+      }
+      case MirrorTaken:
+      {
+         g_MirrorTaken[client] = enable;
+      }
+      case MirrorLocked:
+      {
+         g_Locked[client] = enable;
+      }
+      default:
+      {
+         return ThrowNativeError(SP_ERROR_NATIVE,
+            "Mirror type %d is invalid", mType);
+      }
+   }
+
+   return true;
 }
