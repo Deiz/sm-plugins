@@ -66,6 +66,7 @@ public OnPluginStart()
 	cvEnabled = CreateConVar("moreboom_enabled", "1",
 		"Whether cabers are automatically replaced after exploding");
 
+	g_enabled = GetConVarBool(cvEnabled);
 	HookConVarChange(cvEnabled, OnEnabledChanged);
 
 	AutoExecConfig(true, "moreboom");

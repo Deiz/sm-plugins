@@ -23,9 +23,8 @@ public OnPluginStart()
    sm_playerlimit = CreateConVar("sm_playerlimit", "6",
       "Maximum number of human players", 0, true, 0.0);
 
-   HookConVarChange(sm_playerlimit, OnPlayerLimitChanged);
-
    g_PlayerLimit = GetConVarInt(sm_playerlimit);
+   HookConVarChange(sm_playerlimit, OnPlayerLimitChanged);
 }
 
 public OnMapStart()

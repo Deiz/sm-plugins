@@ -41,11 +41,12 @@ public OnPluginStart()
 	g_hCvarDuration = CreateConVar("sm_intelspam_duration", "8",
 		"Seconds to track intel drops for. Players who drop the intel more than 3 times within the time will be slain.");
 
-	AutoExecConfig(true, "plugin.intelspam");
 	HookEvent("teamplay_flag_event", Event_Intel, EventHookMode_Pre);
 
-	HookConVarChange(g_hCvarDuration, CVar_Duration_Changed);
+	AutoExecConfig(true, "plugin.intelspam");
+
 	g_Duration = GetConVarInt(g_hCvarDuration);
+	HookConVarChange(g_hCvarDuration, CVar_Duration_Changed);
 }
 
 public CVar_Duration_Changed(Handle:cvar, const String:oldVal[], const String:newVal[])

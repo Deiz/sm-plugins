@@ -28,7 +28,7 @@ new Handle:g_Victims;
 
 new String:g_CachedID[MAXPLAYERS+1][32];
 
-new bool:g_bEnabled = true;
+new bool:g_bEnabled;
 new bool:g_bFriendlyFire;
 new bool:g_bLateLoad;
 

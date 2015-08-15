@@ -52,11 +52,12 @@ public OnPluginStart()
 
    g_CvarFriendlyFire = FindConVar("mp_friendlyfire");
 
-   HookConVarChange(g_CvarPublicMirror, OnPublicMirrorChanged);
-
    GetCommandOverride("sm_mirrorme", Override_Command, mirrorme_flags);
 
    AutoExecConfig(true, "plugin.mirrordamage");
+
+   ResetOverride();
+   HookConVarChange(g_CvarPublicMirror, OnPublicMirrorChanged);
 
    if (g_CvarFriendlyFire != INVALID_HANDLE) {
       g_FriendlyFire = GetConVarBool(g_CvarFriendlyFire);
