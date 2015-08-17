@@ -60,7 +60,6 @@ public OnPluginStart()
   g_bEnabled = GetConVarBool(g_CvarEnabled);
 
   RegConsoleCmd("sm_victims", Command_Victims, "sm_victims [#userid|name]");
-  RegAdminCmd("sm_killdebug", Command_KillDebug, ADMFLAG_ROOT);
   RegAdminCmd("sm_killprune", Command_KillPrune, ADMFLAG_ROOT);
 
   HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
@@ -348,46 +347,6 @@ public Action:Command_KillPrune(client, args)
 
   ReplyToCommand(client, "Pruning kills older than %d", value);
   PruneKills(value);
-
-  return Plugin_Handled;
-}
-
-public Action:Command_KillDebug(client, args)
-{
-  new Handle:victims, Handle:killerdata, Handle:victimdata;
-  decl String:killer[32], String:victim[32];
-
-  for (new i=0; i<GetArraySize(g_Killers); i++) {
-    GetArrayString(g_Killers, i, killer, sizeof(killer));
-    victims = GetArrayCell(g_Victims, i);
-
-    ReplyToCommand(client, "[SM] %s has %d unique victims",
-      killer, GetArraySize(victims));
-
-    new bool:ret;
-    ret = GetTrieValue(g_KillData, killer, killerdata);
-    if (!ret) {
-      LogError("1 failed");
-      return Plugin_Handled;
-    }
-
-    for (new j=0; j<GetArraySize(victims); j++) {
-      new written;
-      written = GetArrayString(victims, j, victim, sizeof(victim));
-      if (!written) {
-        LogError("3 failed");
-        return Plugin_Handled;
-      }
-
-      ret = GetTrieValue(killerdata, victim, victimdata);
-      if (!ret) {
-        LogError("2 failed");
-        return Plugin_Handled;
-      }
-
-      ReplyToCommand(client, "  %s (%d)", victim, GetArraySize(victimdata));
-    }
-  }
 
   return Plugin_Handled;
 }

@@ -34,7 +34,6 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 
 public OnPluginStart()
 {
-  RegAdminCmd("sm_bandebug", Command_BanDebug, ADMFLAG_ROOT, "sm_bandebug");
   RegAdminCmd("sm_getbans", Command_GetBans, ADMFLAG_BAN, "sm_getbans");
   RegAdminCmd("sm_clearban", Command_ClearBan, ADMFLAG_BAN, "sm_clearban <id>");
   RegAdminCmd("sm_clearbans", Command_ClearBans, ADMFLAG_BAN, "sm_clearbans");
@@ -124,17 +123,6 @@ public Action:ExpireBan(Handle:timer, any:data)
   RemoveVotekickBan(data, _, 1, 0);
 
   return Plugin_Handled;
-}
-
-public Action:Command_BanDebug(client, args)
-{
-  PrintToChatAll("%d recent successful kick votes", GetArraySize(g_Kicks));
-
-  for (new i=0; i<GetArraySize(g_Kicks); i++) {
-    decl String:auth[32];
-    GetArrayString(g_Kicks, i, auth, sizeof(auth));
-    PrintToChatAll(auth);
-  }
 }
 
 public Action:Command_GetBans(client, args)
@@ -243,7 +231,7 @@ bool:RemoveVotekickBan(banid=0, const String:auth[]="", silent=0, remove=1)
     RemoveFromTrie(g_NameCache, key);
 
     if (remove)
-      new bool:ret = RemoveBan(key, BANFLAG_AUTHID);
+      RemoveBan(key, BANFLAG_AUTHID);
   }
 
   return true;
