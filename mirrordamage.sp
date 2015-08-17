@@ -10,7 +10,7 @@ public Plugin:myinfo =
    name = "Mirror Damage",
    author = "Forth",
    description = "Turns damage dealt or taken by marked players into self-damage",
-   version = "1.1"
+   version = "1.2"
 }
 
 new Handle:g_CvarPublicMirror = INVALID_HANDLE;
@@ -230,8 +230,8 @@ public Native_Status(Handle:hPlugin, numParams)
       return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index %d", client);
    }
 
-   if (!IsClientInGame(client)) {
-      return ThrowNativeError(SP_ERROR_NATIVE, "Client %d is not in game", client);
+   if (!IsClientConnected(client)) {
+      return ThrowNativeError(SP_ERROR_NATIVE, "Client %d is not connected", client);
    }
 
    new MirrorType:mType = GetNativeCell(2);
@@ -262,8 +262,8 @@ public Native_Enable(Handle:hPlugin, numParams)
       return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index %d", client);
    }
 
-   if (!IsClientInGame(client)) {
-      return ThrowNativeError(SP_ERROR_NATIVE, "Client %d is not in game", client);
+   if (!IsClientConnected(client)) {
+      return ThrowNativeError(SP_ERROR_NATIVE, "Client %d is not connected", client);
    }
 
    new MirrorType:mType = GetNativeCell(2);
