@@ -15,7 +15,9 @@ public Plugin:myinfo =
 new Handle:g_UniqueVictimAddedForward;
 
 new Handle:g_CvarEnabled;
-new Handle:g_CvarFriendlyFire;
+
+new bool:g_bWaitingForPlayers;
+new bool:g_bBonusRound;
 
 // ( killer => { victim => [timestamp, timestamp2] } )
 new Handle:g_KillData;
@@ -29,7 +31,6 @@ new Handle:g_Victims;
 new String:g_CachedID[MAXPLAYERS+1][32];
 
 new bool:g_bEnabled;
-new bool:g_bFriendlyFire;
 new bool:g_bLateLoad;
 
 public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
@@ -54,8 +55,6 @@ public OnPluginStart()
   g_CvarEnabled = CreateConVar("sm_killtracker_enabled", "1",
     "Whether kill tracking is enabled");
 
-  g_CvarFriendlyFire = FindConVar("mp_friendlyfire");
-
   HookConVarChange(g_CvarEnabled, OnEnabledChanged);
   g_bEnabled = GetConVarBool(g_CvarEnabled);
 
@@ -63,15 +62,12 @@ public OnPluginStart()
   RegAdminCmd("sm_killprune", Command_KillPrune, ADMFLAG_ROOT);
 
   HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
+  HookEvent("teamplay_round_win", Event_RoundWin, EventHookMode_Post);
+  HookEvent("teamplay_round_start", Event_RoundStart, EventHookMode_Post);
 
   g_KillData = CreateTrie();
   g_Killers = CreateArray(32);
   g_Victims = CreateArray();
-
-  if (g_CvarFriendlyFire != INVALID_HANDLE) {
-    g_bFriendlyFire = GetConVarBool(g_CvarFriendlyFire);
-    HookConVarChange(g_CvarFriendlyFire, OnFriendlyFireChanged);
-  }
 
   if (g_bLateLoad) {
     decl String:tmp[32];
@@ -97,11 +93,6 @@ public OnEnabledChanged(Handle:convar, const String:oldValue[], const String:new
   g_bEnabled = GetConVarBool(convar);
 }
 
-public OnFriendlyFireChanged(Handle:convar, const String:oldValue[], const String:newValue[])
-{
-  g_bFriendlyFire = GetConVarBool(convar);
-}
-
 public OnClientAuthorized(client, const String:auth[])
 {
   if (strcmp(auth, "BOT") == 0) {
@@ -117,9 +108,19 @@ public OnClientDisconnect_Post(client)
   g_CachedID[client][0] = '\0';
 }
 
+public TF2_OnWaitingForPlayersStart()
+{
+   g_bWaitingForPlayers = true;
+}
+
+public TF2_OnWaitingForPlayersEnd()
+{
+   g_bWaitingForPlayers = false;
+}
+
 public Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 {
-  if (!g_bEnabled || g_bFriendlyFire)
+  if (!g_bEnabled || g_bWaitingForPlayers || g_bBonusRound)
     return;
 
   new victim = GetClientOfUserId(GetEventInt(event, "userid"));
@@ -182,6 +183,16 @@ public Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
   }
 
   PushArrayCell(killvictimarray, GetTime());
+}
+
+public Event_RoundStart(Handle:event, const String:name[], bool:dontBroadcast)
+{
+   g_bBonusRound = false;
+}
+
+public Event_RoundWin(Handle:event, const String:name[], bool:dontBroadcast)
+{
+   g_bBonusRound = true;
 }
 
 public Native_UniqueVictims(Handle:hPlugin, numParams)
