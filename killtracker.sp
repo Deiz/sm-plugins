@@ -13,6 +13,7 @@ public Plugin:myinfo =
 }
 
 new Handle:g_UniqueVictimAddedForward;
+new Handle:g_PlayerKilledForward;
 
 new Handle:g_CvarEnabled;
 
@@ -32,6 +33,9 @@ new String:g_CachedID[MAXPLAYERS+1][32];
 
 new bool:g_bEnabled;
 new bool:g_bLateLoad;
+
+new g_LastPruned;
+new g_RetentionTime;
 
 public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 {
@@ -84,8 +88,12 @@ public OnPluginStart()
 
   g_UniqueVictimAddedForward = CreateGlobalForward("OnUniqueVictimAdded",
     ET_Ignore, Param_Cell, Param_Cell);
+  g_PlayerKilledForward = CreateGlobalForward("OnPlayerKilled",
+    ET_Ignore, Param_Cell, Param_Cell);
 
-  CreateTimer(300.0, PruneTimer, 2400, TIMER_REPEAT);
+  g_RetentionTime = 2400;
+
+  CreateTimer(300.0, PruneTimer, g_RetentionTime, TIMER_REPEAT);
 }
 
 public OnEnabledChanged(Handle:convar, const String:oldValue[], const String:newValue[])
@@ -183,6 +191,11 @@ public Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
   }
 
   PushArrayCell(killvictimarray, GetTime());
+
+  Call_StartForward(g_PlayerKilledForward);
+  Call_PushCell(victim);
+  Call_PushCell(killer);
+  Call_Finish();
 }
 
 public Event_RoundStart(Handle:event, const String:name[], bool:dontBroadcast)
@@ -206,7 +219,11 @@ public Native_UniqueVictims(Handle:hPlugin, numParams)
     return ThrowNativeError(SP_ERROR_NATIVE, "Client %d is not authorized", client);
   }
 
-  return UniqueVictims(client);
+  new newerthan = 0;
+  if (numParams > 1)
+    newerthan = GetNativeCell(2);
+
+  return UniqueVictims(client, newerthan);
 }
 
 public Native_FirstKill(Handle:hPlugin, numParams)
@@ -252,7 +269,7 @@ public Native_FirstKill(Handle:hPlugin, numParams)
   return oldest;
 }
 
-UniqueVictims(client)
+UniqueVictims(client, newerthan=0)
 {
   if (!g_CachedID[client][0]) {
     LogError("Client \"%L\" does not have a cached Steam ID", client);
@@ -263,9 +280,39 @@ UniqueVictims(client)
   new index = FindStringInArray(g_Killers, g_CachedID[client]);
   if (index < 0)
     return 0;
-  
+
   new Handle:victims = GetArrayCell(g_Victims, index);
-  return GetArraySize(victims);
+
+  if (newerthan <= g_LastPruned - g_RetentionTime)
+    return GetArraySize(victims);
+
+  new Handle:killerdata, Handle:victimdata;
+
+  decl String:victim[32];
+  new bool:ret;
+
+  ret = GetTrieValue(g_KillData, g_CachedID[client], killerdata);
+  if (!ret) {
+    LogError("Could not get kill data for \"%L\"", client);
+    return -1;
+  }
+
+  new nvictims;
+
+  for (new i=0; i<GetArraySize(victims); i++) {
+    GetArrayString(victims, i, victim, sizeof(victim));
+    ret = GetTrieValue(killerdata, victim, victimdata);
+    if (!ret) {
+      LogError("Could not get victim data for \"%L\"", client);
+      continue;
+    }
+
+    new time = GetArrayCell(victimdata, GetArraySize(victimdata) - 1);
+    if (time > newerthan)
+      nvictims++;
+  }
+
+  return nvictims;
 }
 
 public Action:Command_Victims(client, args)
@@ -365,6 +412,8 @@ public Action:Command_KillPrune(client, args)
 public Action:PruneTimer(Handle:timer, any:data)
 {
   PruneKills(data);
+  g_LastPruned = GetTime();
+
   return Plugin_Continue;
 }
 

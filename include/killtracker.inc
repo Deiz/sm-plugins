@@ -3,10 +3,11 @@
 #endif
 #define _killtracker_included
 
-native KillTracker_UniqueVictims(client);
+native KillTracker_UniqueVictims(client, newerthan=0);
 native KillTracker_FirstKill(client);
 
 forward void OnUniqueVictimAdded(client, nvictims);
+forward void OnPlayerKilled(victim, attacker);
 
 public SharedPlugin:__pl_killtracker =
 {
