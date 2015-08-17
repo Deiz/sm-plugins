@@ -210,13 +210,15 @@ public Action:Command_Mirror(client, args)
 public Action:Command_ListMirrors(client, args)
 {
    for (new i = 1; i <= MaxClients; i++) {
-      if (!IsClientInGame(i) || IsFakeClient(i))
+      if (!IsClientInGame(i) || IsClientReplay(i))
          continue;
       else if (!g_Mirror[i] && !g_MirrorTaken[i])
          continue;
 
-      ReplyToCommand(client, "%40L (Mirror: %3s, Mirror Taken: %3s)",
-         i, g_Mirror[i] ? "Yes" : "No", g_MirrorTaken[i] ? "Yes" : "No");
+      ReplyToCommand(client, "Mirror: %3s, Mirror Taken: %3s, Locked: %3s | %N",
+         g_Mirror[i]      ? "Yes" : " No",
+         g_MirrorTaken[i] ? "Yes" : " No",
+         g_Locked[i]      ? "Yes" : " No", i);
    }
    return Plugin_Handled;
 }
