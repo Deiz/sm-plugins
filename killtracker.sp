@@ -9,8 +9,12 @@ public Plugin:myinfo =
   name = "Kill Tracker",
   author = "Forth",
   description = "Stores unique victim information for each player",
-  version = "1.0"
+  version = "1.1"
 }
+
+functag VictimCallback public(
+  const String:killer[], const String:victim[], Handle:kills, &any:data
+);
 
 new Handle:g_UniqueVictimAddedForward;
 new Handle:g_PlayerKilledForward;
@@ -45,6 +49,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
   }
 
   CreateNative("KillTracker_UniqueVictims", Native_UniqueVictims);
+  CreateNative("KillTracker_TotalKills", Native_TotalKills);
   CreateNative("KillTracker_FirstKill", Native_FirstKill);
   RegPluginLibrary("killtracker");
 
@@ -118,12 +123,12 @@ public OnClientDisconnect_Post(client)
 
 public TF2_OnWaitingForPlayersStart()
 {
-   g_bWaitingForPlayers = true;
+  g_bWaitingForPlayers = true;
 }
 
 public TF2_OnWaitingForPlayersEnd()
 {
-   g_bWaitingForPlayers = false;
+  g_bWaitingForPlayers = false;
 }
 
 public Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
@@ -200,12 +205,12 @@ public Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 
 public Event_RoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 {
-   g_bBonusRound = false;
+  g_bBonusRound = false;
 }
 
 public Event_RoundWin(Handle:event, const String:name[], bool:dontBroadcast)
 {
-   g_bBonusRound = true;
+  g_bBonusRound = true;
 }
 
 public Native_UniqueVictims(Handle:hPlugin, numParams)
@@ -226,6 +231,32 @@ public Native_UniqueVictims(Handle:hPlugin, numParams)
   return UniqueVictims(client, newerthan);
 }
 
+public Native_TotalKills(Handle:hPlugin, numParams)
+{
+  new client = GetNativeCell(1);
+  if (client < 1 || client > MaxClients) {
+    return ThrowNativeError(SP_ERROR_NATIVE, "Invalid client index %d", client);
+  }
+
+  if (!IsClientAuthorized(client)) {
+    return ThrowNativeError(SP_ERROR_NATIVE, "Client %d is not authorized", client);
+  }
+
+  if (!g_CachedID[client][0])
+    return ThrowNativeError(SP_ERROR_NATIVE, "Client \"%L\" does not have a cached Steam ID", client);
+
+  // A player with no kills will not have a key in the killers hash
+  new index = FindStringInArray(g_Killers, g_CachedID[client]);
+  if (index < 0)
+    return 0;
+
+  new newerthan = 0;
+  if (numParams > 1)
+    newerthan = GetNativeCell(2);
+
+  return ScanVictims(client, TotalKills_Callback, newerthan);
+}
+
 public Native_FirstKill(Handle:hPlugin, numParams)
 {
   new client = GetNativeCell(1);
@@ -243,28 +274,8 @@ public Native_FirstKill(Handle:hPlugin, numParams)
   if (index < 0)
     return 0;
 
-  new Handle:killerdata, Handle:victimdata;
-
-  decl String:victim[32];
-  new bool:ret;
-
-  ret = GetTrieValue(g_KillData, g_CachedID[client], killerdata);
-  if (!ret)
-    return ThrowNativeError(SP_ERROR_NATIVE, "Could not get kill data for \"%L\"", client);
-
   new oldest = GetTime();
-
-  new Handle:victims = GetArrayCell(g_Victims, index);
-  for (new i=0; i<GetArraySize(victims); i++) {
-    GetArrayString(victims, i, victim, sizeof(victim));
-    ret = GetTrieValue(killerdata, victim, victimdata);
-    if (!ret)
-      return ThrowNativeError(SP_ERROR_NATIVE, "Could not get victim data for \"%L\"", client);
-
-    new value = GetArrayCell(victimdata, 0);
-    if (value < oldest)
-      oldest = value;
-  }
+  ScanVictims(client, FirstKill_Callback, oldest);
 
   return oldest;
 }
@@ -286,33 +297,7 @@ UniqueVictims(client, newerthan=0)
   if (newerthan <= g_LastPruned - g_RetentionTime)
     return GetArraySize(victims);
 
-  new Handle:killerdata, Handle:victimdata;
-
-  decl String:victim[32];
-  new bool:ret;
-
-  ret = GetTrieValue(g_KillData, g_CachedID[client], killerdata);
-  if (!ret) {
-    LogError("Could not get kill data for \"%L\"", client);
-    return -1;
-  }
-
-  new nvictims;
-
-  for (new i=0; i<GetArraySize(victims); i++) {
-    GetArrayString(victims, i, victim, sizeof(victim));
-    ret = GetTrieValue(killerdata, victim, victimdata);
-    if (!ret) {
-      LogError("Could not get victim data for \"%L\"", client);
-      continue;
-    }
-
-    new time = GetArrayCell(victimdata, GetArraySize(victimdata) - 1);
-    if (time > newerthan)
-      nvictims++;
-  }
-
-  return nvictims;
+  return ScanVictims(client, UniqueVictims_Callback, newerthan);
 }
 
 public Action:Command_Victims(client, args)
@@ -373,8 +358,11 @@ PrintVictims(client, target)
   new printed;
   new nvictims = GetTrieSize(killerdata);
 
-  ReplyToCommand(client, "[SM] %N has %d unique victim%s",
-    target, nvictims, (nvictims == 1) ? "" : "s");
+  new nkills = KillTracker_TotalKills(target);
+
+  ReplyToCommand(client, "[SM] %N has %d unique victim%s, %d kill%s",
+    target, nvictims, (nvictims == 1) ? "" : "s",
+    nkills, (nkills == 1) ? "" : "s");
 
   for (new j=1; j<=MaxClients; j++) {
     if (IsClientAuthorized(j)) {
@@ -461,4 +449,85 @@ PruneKills(threshold)
       RemoveFromArray(g_Victims, i--);
     }
   }
+}
+
+ScanVictims(client, VictimCallback:callback, &any:data)
+{
+  if (!g_CachedID[client][0]) {
+    LogError("Client \"%L\" does not have a cached Steam ID", client);
+    return -1;
+  }
+
+  // A player with no kills will not have a key in the killers hash
+  new index = FindStringInArray(g_Killers, g_CachedID[client]);
+  if (index < 0)
+    return 0;
+
+  new Handle:killerdata, Handle:victimdata;
+  new bool:success;
+
+  success = GetTrieValue(g_KillData, g_CachedID[client], killerdata);
+  if (!success) {
+    LogError("Could not get kill data for \"%L\"", client);
+    return -1;
+  }
+
+  new ret, sum;
+  decl String:victim[32];
+
+  new Handle:victims = GetArrayCell(g_Victims, index);
+
+  for (new i=0; i<GetArraySize(victims); i++) {
+    GetArrayString(victims, i, victim, sizeof(victim));
+    success = GetTrieValue(killerdata, victim, victimdata);
+    if (!success) {
+      LogError("Could not get victim data for \"%L\"", client);
+      continue;
+    }
+
+    Call_StartFunction(INVALID_HANDLE, callback);
+    Call_PushString(g_CachedID[client]);
+    Call_PushString(victim);
+    Call_PushCell(victimdata);
+    Call_PushCellRef(data);
+    Call_Finish(ret);
+
+    sum += ret;
+  }
+
+  return sum;
+}
+
+public FirstKill_Callback(const String:killer[], const String:victim[],
+  Handle:kills, &any:data)
+{
+  new time = GetArrayCell(kills, 0);
+  if (time < data)
+    data = time;
+
+  return 0;
+}
+
+public TotalKills_Callback(const String:killer[], const String:victim[],
+  Handle:kills, &any:data)
+{
+  if (data <= g_LastPruned - g_RetentionTime)
+    return GetArraySize(kills);
+
+  new sum;
+
+  for (new i=0; i<GetArraySize(kills); i++)
+    if (GetArrayCell(kills, i) > data)
+      sum++;
+
+  return sum;
+}
+
+public UniqueVictims_Callback(const String:killer[], const String:victim[],
+  Handle:kills, &any:data)
+{
+  if (GetArrayCell(kills, GetArraySize(kills) - 1) > data)
+    return 1;
+
+  return 0;
 }

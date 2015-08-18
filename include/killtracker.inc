@@ -4,6 +4,7 @@
 #define _killtracker_included
 
 native KillTracker_UniqueVictims(client, newerthan=0);
+native KillTracker_TotalKills(client, newerthan=0);
 native KillTracker_FirstKill(client);
 
 forward void OnUniqueVictimAdded(client, nvictims);
@@ -24,6 +25,7 @@ public SharedPlugin:__pl_killtracker =
 public __pl_killtracker_SetNTVOptional()
 {
   MarkNativeAsOptional("KillTracker_UniqueVictims");
+  MarkNativeAsOptional("KillTracker_TotalKills");
   MarkNativeAsOptional("KillTracker_FirstKill");
 }
 #endif
