@@ -141,9 +141,14 @@ public Action:Command_PlayerInfo(client, args)
       if (g_bKillTracker) {
         new uniques = KillTracker_UniqueVictims(target);
         if (uniques) {
+          new kills = KillTracker_TotalKills(target);
           new minutes = RoundFloat((GetTime() - KillTracker_FirstKill(target)) / 60.0);
-          ReplyToCommand(client, "  Unique Victims: %2d in the past %d minute%s",
-            uniques, minutes, (minutes == 1) ? "" : "s");
+
+          ReplyToCommand(client,
+            "  Kill Tracker: %2d kill%s, %2d unique victim%s in the past %d minute%s",
+            kills, (kills == 1) ? "" : "s",
+            uniques, (uniques == 1) ? "" : "s",
+            minutes, (minutes == 1) ? "" : "s");
         }
       }
 
