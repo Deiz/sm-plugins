@@ -20,6 +20,9 @@ new Handle:g_UniqueVictimAddedForward;
 new Handle:g_PlayerKilledForward;
 
 new Handle:g_CvarEnabled;
+new Handle:g_CvarRetention;
+
+new Handle:g_PruneTimer;
 
 new bool:g_bWaitingForPlayers;
 new bool:g_bBonusRound;
@@ -63,9 +66,14 @@ public OnPluginStart()
 
   g_CvarEnabled = CreateConVar("sm_killtracker_enabled", "1",
     "Whether kill tracking is enabled");
+  g_CvarRetention = CreateConVar("sm_killtracker_retention", "40",
+    "How many minutes to store kill data for", _, true, 0.0);
+
+  g_bEnabled = GetConVarBool(g_CvarEnabled);
+  g_RetentionTime = GetConVarInt(g_CvarRetention) * 60;
 
   HookConVarChange(g_CvarEnabled, OnEnabledChanged);
-  g_bEnabled = GetConVarBool(g_CvarEnabled);
+  HookConVarChange(g_CvarRetention, OnRetentionChanged);
 
   RegConsoleCmd("sm_victims", Command_Victims, "sm_victims [#userid|name]");
   RegAdminCmd("sm_killprune", Command_KillPrune, ADMFLAG_ROOT);
@@ -96,14 +104,22 @@ public OnPluginStart()
   g_PlayerKilledForward = CreateGlobalForward("OnPlayerKilled",
     ET_Ignore, Param_Cell, Param_Cell);
 
-  g_RetentionTime = 2400;
-
-  CreateTimer(300.0, PruneTimer, g_RetentionTime, TIMER_REPEAT);
+  g_PruneTimer = CreateTimer(300.0, PruneTimer, g_RetentionTime, TIMER_REPEAT);
 }
 
 public OnEnabledChanged(Handle:convar, const String:oldValue[], const String:newValue[])
 {
   g_bEnabled = GetConVarBool(convar);
+}
+
+public OnRetentionChanged(Handle:convar, const String:oldValue[], const String:newValue[])
+{
+  g_RetentionTime = GetConVarInt(convar) * 60;
+
+  if (g_PruneTimer != INVALID_HANDLE)
+    CloseHandle(g_PruneTimer);
+
+  g_PruneTimer = CreateTimer(300.0, PruneTimer, g_RetentionTime, TIMER_REPEAT);
 }
 
 public OnClientAuthorized(client, const String:auth[])
