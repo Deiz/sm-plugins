@@ -12,6 +12,7 @@ public Plugin:myinfo =
 
 new Handle:g_hCvarKSMin;
 new Handle:g_hCvarKSMax;
+new Handle:g_hCvarKSDefault;
 
 public OnPluginStart()
 {
@@ -21,6 +22,9 @@ public OnPluginStart()
       "Minimum killstreak value that can be set, -1 for no limit.");
    g_hCvarKSMax = CreateConVar("sm_ks_max", "10",
       "Maximum killstreak value that can be set, -1 for no limit.");
+   g_hCvarKSDefault = CreateConVar("sm_ks_default", "10",
+      "Default killstreak value when no arguments are provided.");
+
    AutoExecConfig(true, "plugin.killstreak");
 }
 
@@ -29,9 +33,11 @@ public Action:Command_Killstreak(client, args)
    if (!client || !IsPlayerAlive(client))
       return Plugin_Handled;
 
-   new String:kills[16];
-   new n = 0;
+   new n;
+
    if (args > 0) {
+      decl String:kills[16];
+
       GetCmdArg(1, kills, sizeof(kills));
       n = StringToInt(kills);
       new min = GetConVarInt(g_hCvarKSMin);
@@ -42,8 +48,21 @@ public Action:Command_Killstreak(client, args)
       else if (max != -1 && n > max)
          n = max;
    }
+   else {
+      new current = GetEntProp(client, Prop_Send, "m_nStreaks", _, 0);
 
+      if (!current)
+         n = GetConVarInt(g_hCvarKSDefault);
+      else
+         n = 0;
+   }
+
+   SetStreak(client, n);
+   return Plugin_Handled;
+}
+
+SetStreak(client, n)
+{
    SetEntProp(client, Prop_Send, "m_nStreaks", n, _, 0);
    ReplyToCommand(client, "[SM] Set killstreak to: %d", n);
-   return Plugin_Handled;
 }
