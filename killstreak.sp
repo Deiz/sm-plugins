@@ -17,6 +17,8 @@ new Handle:g_hCvarKSDefault;
 public OnPluginStart()
 {
    RegConsoleCmd("sm_ks", Command_Killstreak);
+   RegConsoleCmd("sm_kson", Command_KillstreakOn);
+   RegConsoleCmd("sm_ksoff", Command_KillstreakOff);
 
    g_hCvarKSMin = CreateConVar("sm_ks_min", "0",
       "Minimum killstreak value that can be set, -1 for no limit.");
@@ -58,6 +60,24 @@ public Action:Command_Killstreak(client, args)
    }
 
    SetStreak(client, n);
+   return Plugin_Handled;
+}
+
+public Action:Command_KillstreakOn(client, args)
+{
+   if (!client || !IsPlayerAlive(client))
+      return Plugin_Handled;
+
+   SetStreak(client, GetConVarInt(g_hCvarKSDefault));
+   return Plugin_Handled;
+}
+
+public Action:Command_KillstreakOff(client, args)
+{
+   if (!client || !IsPlayerAlive(client))
+      return Plugin_Handled;
+
+   SetStreak(client, 0);
    return Plugin_Handled;
 }
 
