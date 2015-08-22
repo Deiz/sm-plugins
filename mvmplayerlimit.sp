@@ -53,7 +53,8 @@ public OnClientPostAdminCheck(client)
       new flags = GetUserFlagBits(client);
 
       if (clients <= g_PlayerLimit || IsFakeClient(client) ||
-            flags & ADMFLAG_ROOT || flags & ADMFLAG_RESERVATION)
+            flags & ADMFLAG_ROOT || flags & ADMFLAG_RESERVATION ||
+            CheckCommandAccess(client, "sm_reskick_immunity", ADMFLAG_RESERVATION, true))
          return;
       
       /* Kick player because there are no public slots left */
