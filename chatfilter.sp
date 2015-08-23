@@ -3,6 +3,7 @@
 #include <tf2_stocks>
 #include <sdktools>
 #include <basecomm>
+#include <admin_print>
 
 #define REQUIRE_PLUGIN
 #include <scp>
@@ -25,6 +26,9 @@ new Handle:g_FilterData;
 
 new g_nFilters;
 
+/* Array of queued admin messages. */
+new Handle:g_Notifications;
+
 new Handle:g_LastTrigger[MAXPLAYERS+1];
 
 new bool:g_NewMessage[MAXPLAYERS+1] = { false, ... };
@@ -44,7 +48,8 @@ new String:g_Actions[][] = {
   "markfordeath",
   "markfordeathsilent",
   "mute",
-  "gag"
+  "gag",
+  "notify"
 };
 
 enum actionIndexes {
@@ -60,7 +65,8 @@ enum actionIndexes {
   IND_MARKFORDEATH,
   IND_MARKFORDEATHSILENT,
   IND_MUTE,
-  IND_GAG
+  IND_GAG,
+  IND_NOTIFY
 };
 
 #define ACTION_SUPPRESS (1 << 0)
@@ -76,6 +82,7 @@ enum actionIndexes {
 #define ACTION_MARKFORDEATHSILENT (1 << 10)
 #define ACTION_MUTE     (1 << 11)
 #define ACTION_GAG      (1 << 12)
+#define ACTION_NOTIFY   (1 << 13)
 
 #define ACTION_HASDATA (1 << 31)
 
@@ -103,6 +110,8 @@ public OnPluginStart()
 
   g_CvarStealthGag = CreateConVar("sm_chatfilter_stealthgag", "1",
     "Whether gagged player should see their own chat");
+
+  g_Notifications = CreateArray(MAXLENGTH_INPUT);
 
   RegAdminCmd("sm_chatfilter_reload", Command_Reload, ADMFLAG_ROOT, "sm_chatfilter_reload");
   ParseConfig();
@@ -196,6 +205,18 @@ public Action:OnChatMessage(&author, Handle:recipients, String:name[], String:me
         if (mask & ACTION_HASDATA)
           data = GetArrayCell(g_FilterData, i);
 
+        if (mask & ACTION_NOTIFY) {
+          decl String:notification[MAXLENGTH_INPUT];
+
+          Format(notification, sizeof(notification),
+            "[SM] %N triggered filter \"%s\" with:", author, buf);
+          PushArrayString(g_Notifications, notification);
+          PushArrayString(g_Notifications, message);
+
+          RequestFrame(PrintNotifications);
+        }
+
+
         PunishPlayer(author, mask, data);
 
         SetArrayCell(g_LastTrigger[author], i, tick);
@@ -222,6 +243,18 @@ public Action:Command_Reload(client, args)
   ReplyToCommand(client, "[SM] Parsed %d filters.", g_nFilters);
 
   return Plugin_Handled;
+}
+
+public PrintNotifications(any:data)
+{
+  decl String:msg[MAXLENGTH_INPUT];
+
+  for (new i=0; i<GetArraySize(g_Notifications); i++) {
+    GetArrayString(g_Notifications, i, msg, sizeof(msg));
+    PrintToChatAdmins(_, msg);
+  }
+
+  ClearArray(g_Notifications);
 }
 
 // Returns whether the message should be suppressed, and if the player
